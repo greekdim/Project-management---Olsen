@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Réunion engineering</title>
+<style>
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #d9dee5;
+  --accent: #1f4e78; --accent-text: #ffffff; --chip: #eef2f7; --chip-on: #1f4e78; --chip-on-text: #ffffff;
+  --danger: #b42318; --ok: #1a7f37; --warn-bg: #fff4ce; --stage: #e4ebf3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181d; --surface: #1d232b; --text: #e8ecf1; --muted: #9aa6b4; --border: #2f3844;
+    --accent: #5aa0e0; --accent-text: #0d1117; --chip: #28313c; --chip-on: #5aa0e0; --chip-on-text: #0d1117;
+    --danger: #ff7b72; --ok: #56d364; --warn-bg: #3a3320; --stage: #232c37;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+header h1 { font-size: 18px; margin: 0; flex: 1 1 auto; }
+header .meta { color: var(--muted); font-size: 12px; }
+main { padding: 16px 20px 60px; max-width: 1400px; margin: 0 auto; }
+button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 6px; padding: 5px 10px; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.link { border: none; background: none; color: var(--accent); padding: 0 4px; text-decoration: underline; }
+button.link:disabled { text-decoration: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#save-state { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--chip); }
+#save-state.ok { color: var(--ok); } #save-state.err { color: var(--danger); font-weight: 600; }
+
+.filters { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+.filters-top { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 10px; }
+.filters-top input[type=search] { flex: 1 1 260px; min-width: 200px; }
+.fgroup { margin-top: 10px; }
+.fgroup-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-weight: 600; }
+.fgroup-head .count { color: var(--muted); font-weight: 400; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border-radius: 14px; padding: 3px 11px; background: var(--chip); border: 1px solid transparent; }
+.chip .n { opacity: .65; margin-left: 4px; font-size: 12px; }
+.chip[aria-pressed=true] { background: var(--chip-on); color: var(--chip-on-text); }
+input[type=text], input[type=search], input[type=date], textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+textarea { width: 100%; resize: vertical; min-height: 60px; }
+
+.stage { margin: 22px 0 8px; padding: 6px 12px; background: var(--stage); border-left: 4px solid var(--accent); border-radius: 4px; font-weight: 700; display: flex; gap: 8px; }
+.stage .count { font-weight: 400; color: var(--muted); }
+details.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+details.card[open] { border-color: var(--accent); }
+summary { padding: 8px 12px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▸"; color: var(--muted); }
+details[open] > summary::before { content: "▾"; }
+.num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.title { font-weight: 600; flex: 1 1 280px; }
+.sub { color: var(--muted); font-size: 12px; }
+.badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--chip); }
+.badge.open { background: var(--warn-bg); }
+.tag { font-size: 11px; padding: 0 6px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
+.body { padding: 4px 12px 12px; border-top: 1px solid var(--border); display: grid; gap: 12px; grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.6fr); }
+@media (max-width: 900px) { .body { grid-template-columns: 1fr; } }
+.body h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 10px 0 4px; }
+.action { display: grid; grid-template-columns: auto 1fr 150px 140px auto; gap: 6px; align-items: center; margin-bottom: 5px; }
+@media (max-width: 1100px) { .action { grid-template-columns: auto 1fr auto; } .action .owner, .action .due { grid-column: 2 / 3; } }
+.action input[type=checkbox] { width: 18px; height: 18px; }
+.action.done .atext { text-decoration: line-through; color: var(--muted); }
+.due.overdue { border-color: var(--danger); color: var(--danger); }
+.x { padding: 2px 8px; color: var(--muted); }
+.review { margin-top: 10px; font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.empty { text-align: center; color: var(--muted); padding: 40px 0; }
+.banner { background: var(--warn-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Réunion engineering <span class="meta" id="gen"></span></h1>
+  <span id="save-state" class="ok">✔ Prêt</span>
+  <button id="btn-refresh" title="Relit les projets dans Odoo (vos notes sont conservées)">↻ Rafraîchir depuis Odoo</button>
+  <button id="btn-export" class="primary" title="Exporte les projets actuellement affichés">⬇ Exporter en Excel</button>
+  <button id="btn-quit" title="Arrête le serveur local">Quitter</button>
+</header>
+<main>
+  <div class="banner" id="banner"></div>
+  <section class="filters" aria-label="Filtres">
+    <div class="filters-top">
+      <input type="search" id="q" placeholder="Rechercher (n° projet, nom, client)…" aria-label="Recherche">
+      <label><input type="checkbox" id="open-only"> Seulement les projets avec des actions ouvertes</label>
+      <button id="btn-clear">✕ Effacer tous les filtres</button>
+      <button id="btn-expand">Tout déplier</button>
+      <button id="btn-collapse">Tout replier</button>
+      <strong id="count"></strong>
+    </div>
+    <div id="filter-groups"></div>
+  </section>
+  <div id="list"></div>
+</main>
+<datalist id="owners"></datalist>
+
+<script>
+"use strict";
+const TOKEN = "__TOKEN__";
+const GROUPS = [
+  { key: "stages",   title: "Étapes",             all: p => [p.stage] },
+  { key: "managers", title: "Chefs de projet",    all: p => [p.manager || "(non assigné)"] },
+  { key: "tags",     title: "Étiquettes",         all: p => p.tags },
+  { key: "owners",   title: "Responsables d'actions", all: p => actionOwners(p) },
+];
+const F = { stages: new Set(), managers: new Set(), tags: new Set(), owners: new Set(), openOnly: false, q: "" };
+const openIds = new Set();
+const timers = {};
+let S = { projects: [], notes: {} };
+
+const $ = id => document.getElementById(id);
+const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const uid = () => Math.random().toString(36).slice(2, 10);
+const today = () => new Date().toISOString().slice(0, 10);
+const frDate = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
+
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid);
+  return el;
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "X-Token": TOKEN, "Content-Type": "application/json" } });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+/* ---------- notes ---------- */
+function note(id) {
+  return S.notes[id] || (S.notes[id] = { sujets: "", actions: [], derniere_review: "" });
+}
+function actionOwners(p) {
+  const n = S.notes[p.id];
+  return n ? [...new Set(n.actions.map(a => a.owner.trim()).filter(Boolean))] : [];
+}
+function openCount(p) {
+  const n = S.notes[p.id];
+  return n ? n.actions.filter(a => !a.done).length : 0;
+}
+
+/* ---------- sauvegarde automatique ---------- */
+function setStatus(text, cls) { const s = $("save-state"); s.textContent = text; s.className = cls || ""; }
+function queueSave(id) {
+  setStatus("… enregistrement", "");
+  clearTimeout(timers[id]);
+  timers[id] = setTimeout(async () => {
+    const n = note(id);
+    try {
+      await api("/api/note", { method: "POST", body: JSON.stringify({ id, ...n }) });
+      delete timers[id];
+      if (!Object.keys(timers).length) setStatus("✔ Enregistré " + new Date().toLocaleTimeString("fr-FR"), "ok");
+    } catch (e) { setStatus("⚠ Échec de l'enregistrement : " + e.message, "err"); }
+  }, 500);
+}
+window.addEventListener("beforeunload", e => { if (Object.keys(timers).length) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- filtres ---------- */
+function matches(p) {
+  for (const g of GROUPS) {
+    if (F[g.key].size && !g.all(p).some(v => F[g.key].has(v))) return false;
+  }
+  if (F.openOnly && !openCount(p)) return false;
+  if (F.q) {
+    const hay = norm([p.numero, p.description, p.client].join(" "));
+    if (!F.q.split(/\s+/).every(w => hay.includes(w))) return false;
+  }
+  return true;
+}
+function groupValues(g) {
+  const counts = new Map();
+  for (const p of S.projects) for (const v of g.all(p)) counts.set(v, (counts.get(v) || 0) + 1);
+  let values = [...counts.keys()];
+  if (g.key !== "stages") values.sort((a, b) => norm(a).localeCompare(norm(b)));
+  return values.map(v => [v, counts.get(v)]);
+}
+function renderFilters() {
+  const root = $("filter-groups");
+  root.replaceChildren(...GROUPS.map(g => {
+    const sel = F[g.key];
+    const chips = groupValues(g).map(([v, n]) => h("button", {
+      class: "chip", type: "button", "aria-pressed": String(sel.has(v)),
+      onclick: () => { sel.has(v) ? sel.delete(v) : sel.add(v); renderFilters(); renderList(); }
+    }, v, h("span", { class: "n" }, String(n))));
+    return h("div", { class: "fgroup" },
+      h("div", { class: "fgroup-head" }, g.title,
+        h("span", { class: "count" }, sel.size ? `${sel.size} sélectionné(s)` : "tous"),
+        h("button", { class: "link", type: "button", disabled: !sel.size,
+          onclick: () => { sel.clear(); renderFilters(); renderList(); } }, "Tout afficher")),
+      h("div", { class: "chips" }, chips.length ? chips : h("span", { class: "sub" }, "—")));
+  }));
+  const anyFilter = GROUPS.some(g => F[g.key].size) || F.openOnly || F.q;
+  $("btn-clear").disabled = !anyFilter;
+}
+function clearAll() {
+  GROUPS.forEach(g => F[g.key].clear());
+  F.openOnly = false; F.q = "";
+  $("open-only").checked = false; $("q").value = "";
+  renderFilters(); renderList();
+}
+
+/* ---------- liste ---------- */
+function updateOwnersList() {
+  const names = new Set();
+  S.projects.forEach(p => { if (p.manager) names.add(p.manager); actionOwners(p).forEach(o => names.add(o)); });
+  $("owners").replaceChildren(...[...names].sort((a, b) => norm(a).localeCompare(norm(b))).map(n => h("option", { value: n })));
+}
+function badgeText(p) {
+  const n = note(p.id), open = openCount(p), total = n.actions.length;
+  return total ? `${open} action(s) ouverte(s) / ${total}` : "aucune action";
+}
+function refreshBadge(card, p) {
+  const b = card.querySelector(".badge");
+  b.textContent = badgeText(p);
+  b.classList.toggle("open", openCount(p) > 0);
+  const subj = card.querySelector(".snippet");
+  const s = note(p.id).sujets.trim().split("\n")[0];
+  subj.textContent = s ? "💬 " + (s.length > 70 ? s.slice(0, 70) + "…" : s) : "";
+}
+
+function actionRow(p, a, card) {
+  const n = note(p.id);
+  const row = h("div", { class: "action" + (a.done ? " done" : "") });
+  const chk = h("input", { type: "checkbox", "aria-label": "Action faite", checked: a.done,
+    onchange: e => { a.done = e.target.checked; row.classList.toggle("done", a.done); refreshBadge(card, p); queueSave(p.id); renderFilters(); } });
+  const text = h("input", { type: "text", class: "atext", placeholder: "Action à entreprendre…", value: a.text,
+    oninput: e => { a.text = e.target.value; queueSave(p.id); },
+    onkeydown: e => { if (e.key === "Enter") { e.preventDefault(); addAction(p, card, true); } } });
+  const owner = h("input", { type: "text", class: "owner", list: "owners", placeholder: "Responsable", value: a.owner, "aria-label": "Responsable de l'action",
+    oninput: e => { a.owner = e.target.value; queueSave(p.id); },
+    onchange: () => { updateOwnersList(); renderFilters(); } });
+  const due = h("input", { type: "date", class: "due", value: a.due, "aria-label": "Échéance",
+    onchange: e => { a.due = e.target.value; markOverdue(due, a); queueSave(p.id); } });
+  markOverdue(due, a);
+  const del = h("button", { class: "x", type: "button", title: "Supprimer l'action", "aria-label": "Supprimer l'action",
+    onclick: () => { n.actions = n.actions.filter(x => x !== a); row.remove(); refreshBadge(card, p); queueSave(p.id); renderFilters(); } }, "✕");
+  row.append(chk, text, owner, due, del);
+  return row;
+}
+function markOverdue(input, a) { input.classList.toggle("overdue", !!a.due && !a.done && a.due < today()); }
+
+function addAction(p, card, focus) {
+  const a = { id: uid(), text: "", owner: "", done: false, due: "" };
+  note(p.id).actions.push(a);
+  const row = actionRow(p, a, card);
+  card.querySelector(".actions").append(row);
+  refreshBadge(card, p); queueSave(p.id);
+  if (focus) row.querySelector(".atext").focus();
+}
+
+function card(p) {
+  const n = note(p.id);
+  const det = h("details", { class: "card", "data-id": p.id });
+  if (openIds.has(p.id)) det.open = true;
+  det.addEventListener("toggle", () => det.open ? openIds.add(p.id) : openIds.delete(p.id));
+
+  det.append(h("summary", {},
+    h("span", { class: "num" }, p.numero || "—"),
+    h("span", { class: "title" }, p.description || "(sans nom)"),
+    h("span", { class: "sub" }, [p.client, p.manager].filter(Boolean).join(" · ")),
+    ...p.tags.map(t => h("span", { class: "tag" }, t)),
+    h("span", { class: "badge" }, ""),
+    h("span", { class: "sub snippet" }, "")));
+
+  const sujets = h("textarea", { placeholder: "Points à aborder en réunion…", "aria-label": "Sujets à discuter",
+    oninput: e => { n.sujets = e.target.value; e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; refreshBadge(det, p); queueSave(p.id); } });
+  sujets.value = n.sujets;
+  const actions = h("div", { class: "actions" });
+  n.actions.forEach(a => actions.append(actionRow(p, a, det)));
+
+  const review = h("div", { class: "review" },
+    h("span", { class: "rv" }, n.derniere_review ? "Dernière review : " + frDate(n.derniere_review) : "Jamais revu"),
+    h("button", { type: "button", onclick: e => { n.derniere_review = today(); e.target.previousSibling.textContent = "Dernière review : " + frDate(n.derniere_review); queueSave(p.id); } }, "Marquer revu aujourd'hui"),
+    h("span", {}, [p.date_start && "Début " + frDate(p.date_start), p.date_end && "Fin " + frDate(p.date_end)].filter(Boolean).join(" → ")));
+
+  det.append(h("div", { class: "body" },
+    h("div", {}, h("h3", {}, "Sujets à discuter"), sujets, review),
+    h("div", {}, h("h3", {}, "Actions à entreprendre"), actions,
+      h("button", { type: "button", onclick: () => addAction(p, det, true) }, "+ Ajouter une action"))));
+  refreshBadge(det, p);
+  det.addEventListener("toggle", () => { if (det.open) { sujets.style.height = "auto"; sujets.style.height = Math.max(60, sujets.scrollHeight) + "px"; } });
+  return det;
+}
+
+function visibleProjects() { return S.projects.filter(matches); }
+
+function renderList() {
+  const shown = visibleProjects();
+  $("count").textContent = `${shown.length} projet(s) affiché(s) sur ${S.projects.length}`;
+  const root = $("list");
+  if (!shown.length) { root.replaceChildren(h("div", { class: "empty" }, "Aucun projet ne correspond aux filtres.")); return; }
+  const parts = [];
+  let stage = null, countEl = null, n = 0;
+  for (const p of shown) {
+    if (p.stage !== stage) {
+      stage = p.stage; n = 0;
+      countEl = h("span", { class: "count" }, "");
+      parts.push(h("div", { class: "stage" }, stage, countEl));
+    }
+    n++; countEl.textContent = `(${n})`;
+    parts.push(card(p));
+  }
+  root.replaceChildren(...parts);
+}
+
+function renderAll() {
+  $("gen").textContent = S.generated_at ? "· données Odoo du " + S.generated_at : "";
+  const b = $("banner");
+  if (S.archived_count) { b.style.display = "block"; b.textContent = `${S.archived_count} projet(s) avec des notes ne sont plus dans la liste (clôturés, étiquette retirée…) : ils sont dans l'onglet « Projets archivés » de l'export Excel.`; }
+  else b.style.display = "none";
+  updateOwnersList(); renderFilters(); renderList();
+}
+
+/* ---------- boutons ---------- */
+$("q").addEventListener("input", e => { F.q = norm(e.target.value).trim(); renderFilters(); renderList(); });
+$("open-only").addEventListener("change", e => { F.openOnly = e.target.checked; renderFilters(); renderList(); });
+$("btn-clear").addEventListener("click", clearAll);
+$("btn-expand").addEventListener("click", () => document.querySelectorAll("details.card").forEach(d => d.open = true));
+$("btn-collapse").addEventListener("click", () => document.querySelectorAll("details.card").forEach(d => d.open = false));
+$("btn-export").addEventListener("click", () => {
+  const ids = visibleProjects().map(p => p.id).join(",");
+  window.location = `/api/export.xlsx?t=${encodeURIComponent(TOKEN)}&ids=${ids}`;
+});
+$("btn-refresh").addEventListener("click", async e => {
+  e.target.disabled = true; setStatus("↻ Lecture d'Odoo…", "");
+  try { S = await api("/api/refresh", { method: "POST", body: "{}" }); renderAll(); setStatus("✔ Odoo relu", "ok"); }
+  catch (err) { setStatus("⚠ " + err.message, "err"); }
+  e.target.disabled = false;
+});
+$("btn-quit").addEventListener("click", async () => {
+  if (Object.keys(timers).length) { alert("Une sauvegarde est en cours, réessayez dans une seconde."); return; }
+  if (!confirm("Arrêter le serveur local ? (vos notes sont déjà enregistrées)")) return;
+  try { await api("/api/quit", { method: "POST", body: "{}" }); } catch (_) {}
+  document.body.innerHTML = "<p style='padding:40px;font:16px system-ui'>Serveur arrêté. Vous pouvez fermer cet onglet. Pour revenir : relancez le script.</p>";
+});
+
+api("/api/state").then(s => { S = s; renderAll(); setStatus("✔ Prêt", "ok"); })
+  .catch(e => setStatus("⚠ " + e.message, "err"));
+</script>
+</body>
+</html>

@@ -1,28 +1,40 @@
 """
-Extraction Odoo des projets "PRO (LIG)" + "Engineering" pour les réunions
-engineering.
+Réunion engineering : projets Odoo "PRO (LIG)" + "Engineering".
 
-- Garde les projets portant LES DEUX étiquettes (PRO (LIG) ET Engineering).
-- Exclut les étapes Annulé / Cloturé / Autres / Template / Canceled
-  (comparaison exacte, insensible à la casse et aux accents).
-- Trie par étape (STAGE_ORDER) -> chef de projet -> numéro de projet.
-- Génère un Excel : "Projets actifs", "Synthèse", "Projets archivés".
+Le script récupère les projets dans Odoo puis ouvre une page web LOCALE
+(reunion_ui.html) dans votre navigateur :
+- filtres à sélection multiple : étapes, chefs de projet, étiquettes,
+  responsables d'actions ; boutons « Tout afficher » / « Effacer les filtres » ;
+- par projet : sujets à discuter + actions à entreprendre (case à cocher,
+  responsable, échéance) ;
+- sauvegarde automatique dans notes_reunion.json (à côté du script) :
+  retrouvé à chaque nouvelle extraction ;
+- export Excel des projets affichés.
+
+Règles : projets portant LES DEUX étiquettes ; étapes Annulé / Cloturé / Autres /
+Template / Canceled exclues (insensible à la casse et aux accents) ; tri par
+étape (STAGE_ORDER) -> chef de projet -> numéro de projet.
 
 Identifiants : variables d'environnement ODOO_URL, ODOO_DB, ODOO_USER,
 ODOO_PASSWORD, ou fichier .env à côté du script (voir .env.example).
 """
 import datetime
 import getpass
+import io
+import json
 import os
 import re
+import secrets
 import sys
+import threading
 import traceback
 import unicodedata
+import urllib.parse
+import webbrowser
 import xmlrpc.client
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import pandas as pd
 from openpyxl import Workbook
-from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -94,45 +106,13 @@ STAGE_SYNONYMS = {
     "Réception et CE": ["Récepton et CE", "Reception et CE"],
 }
 
-OUTPUT_FILE = "project_review_odoo.xlsx"
-SHEET_HOME = "Accueil"
-SHEET_LISTS = "Listes"
-SHEET_MAIN = "Projets actifs"
-SHEET_SUMMARY = "Synthèse"
-SHEET_ARCHIVE = "Projets archivés"
-
-COLUMNS = [
-    "id_odoo", "numero_projet", "description", "partner_id", "stage_id", "etiquettes", "chef_de_projet",
-    "date_debut", "date_fin",
-    "sujets_a_discuter", "actions_a_entreprendre", "responsable_action",
-    "date_limite", "statut", "derniere_review", "commentaires",
-]
-DATE_COLUMNS = ["date_debut", "date_fin", "date_limite", "derniere_review"]
-
-HEADER_MAP = {
-    "id_odoo": "ID Odoo",
-    "numero_projet": "N° Projet",
-    "description": "Projet",
-    "partner_id": "Client",
-    "stage_id": "Étape",
-    "etiquettes": "Étiquettes",
-    "chef_de_projet": "Chef de projet",
-    "date_debut": "Date début",
-    "date_fin": "Date fin",
-    "sujets_a_discuter": "Sujets à discuter",
-    "actions_a_entreprendre": "Actions à entreprendre",
-    "responsable_action": "Responsable action",
-    "date_limite": "Date limite",
-    "statut": "Statut",
-    "derniere_review": "Dernière review",
-    "commentaires": "Commentaires",
-}
-ARCHIVE_COLUMNS = COLUMNS + ["date_archivage"]
-ARCHIVE_HEADER_MAP = dict(HEADER_MAP, date_archivage="Archivé le")
-REVERSE_HEADER_MAP = {v: k for k, v in ARCHIVE_HEADER_MAP.items()}
+NOTES_FILE = "notes_reunion.json"
+UI_FILE = "reunion_ui.html"
+NO_MANAGER = "(non assigné)"
 
 # Numéro de projet attendu en tête du nom : lettre + 2 chiffres + "-" + 5 chiffres
 PROJECT_NUMBER_RE = re.compile(r'^([A-Za-z]\d{2}-\d{5})\s*(.*)$')
+ISO_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def normalize(text):
@@ -168,408 +148,34 @@ def split_project_name(display_name):
     return "", display_name.strip()
 
 
-def to_date(value):
-    """str Odoo / Timestamp / date / None / NaN -> datetime.date ou None."""
-    if value is None:
-        return None
-    try:
-        if pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(value, str):
-        v = value.strip()
-        if not v or v.lower() == "nan":
-            return None
-        try:
-            return datetime.datetime.strptime(v[:10], "%Y-%m-%d").date()
-        except ValueError:
-            return None
-    if isinstance(value, datetime.datetime):  # inclut pd.Timestamp
-        return value.date()
-    if isinstance(value, datetime.date):
-        return value
-    return None
+def iso_date(value):
+    """Valeur Odoo (str 'YYYY-MM-DD[ HH:MM:SS]' ou False) -> 'YYYY-MM-DD' ou ''."""
+    if isinstance(value, str) and ISO_DATE_RE.match(value.strip()[:10]):
+        return value.strip()[:10]
+    return ""
 
 
-def to_text(value):
-    """Valeur texte d'un ancien fichier Excel (NaN/NaT -> '')."""
-    if value is None:
-        return ""
-    try:
-        if pd.isna(value):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    return str(value)
+def fr_date(iso):
+    """'YYYY-MM-DD' -> 'DD/MM/YYYY' (chaîne vide si invalide)."""
+    return f"{iso[8:10]}/{iso[5:7]}/{iso[0:4]}" if ISO_DATE_RE.match(iso or "") else ""
 
 
-# ==================================================================
-#  LECTURE DE L'ANCIEN FICHIER (pour alimenter l'archive)
-# ==================================================================
-def load_previous_notes(path):
-    """Retourne (old_main, old_archive) : dicts {id_odoo: {colonnes...}}."""
-    if not os.path.exists(path):
-        return {}, {}
-
-    def _load_sheet(sheet_name):
-        try:
-            df = pd.read_excel(path, sheet_name=sheet_name)
-        except Exception:
-            return {}
-        df = df.rename(columns=REVERSE_HEADER_MAP)
-        if "id_odoo" not in df.columns:
-            return {}
-        result = {}
-        for _, row in df.iterrows():
-            try:
-                pid = int(row["id_odoo"])
-            except (ValueError, TypeError):
-                continue
-            result[pid] = {col: row[col] for col in df.columns if col != "id_odoo"}
-        return result
-
-    return _load_sheet(SHEET_MAIN), _load_sheet(SHEET_ARCHIVE)
-
-
-# ==================================================================
-#  CONSTRUCTION DES LIGNES
-# ==================================================================
-def build_rows(projects, old_main, old_archive):
-    """Retourne (main_rows, archive_rows).
-
-    La feuille principale repart de zéro à chaque extraction. L'archive garde
-    le dernier état connu (avec notes) des projets qui sortent de la liste."""
-    today = datetime.date.today()
-    current_ids = {p["id"] for p in projects}
-
-    main_rows = []
-    for p in projects:
-        main_rows.append({
-            "id_odoo": p["id"],
-            "numero_projet": p["numero_projet"],
-            "description": p["description"],
-            "partner_id": p["partner_id"],
-            "stage_id": p["stage_id"],
-            "etiquettes": p.get("tags", ""),
-            "chef_de_projet": p["manager"] or "",
-            "date_debut": to_date(p["date_start"]),
-            "date_fin": to_date(p["date_end"]),
-            "sujets_a_discuter": "",
-            "actions_a_entreprendre": "",
-            "responsable_action": p["manager"] or "",
-            "date_limite": None,
-            "statut": "",
-            "derniere_review": None,
-            "commentaires": "",
-        })
-
-    # Tri : étape (ordre imposé, inconnues à la fin par ordre alphabétique)
-    # -> chef de projet -> numéro de projet
-    main_rows.sort(key=lambda r: (
-        stage_priority(r["stage_id"]),
-        normalize(r["stage_id"]) if stage_priority(r["stage_id"]) == len(STAGE_ORDER) else "",
-        normalize(r["chef_de_projet"]),
-        r["numero_projet"] or "",
+def sort_projects(projects):
+    """Étape (ordre imposé ; inconnues à la fin, alphabétiques) -> chef -> numéro."""
+    unknown = len(STAGE_ORDER)
+    return sorted(projects, key=lambda p: (
+        stage_priority(p["stage"]),
+        normalize(p["stage"]) if stage_priority(p["stage"]) == unknown else "",
+        normalize(p["manager"]),
+        p["numero"],
     ))
-
-    archive_rows = []
-    for pid in (set(old_main) | set(old_archive)) - current_ids:
-        if pid in old_main:
-            source, date_archivage = old_main[pid], today
-        else:
-            source = old_archive[pid]
-            date_archivage = to_date(source.get("date_archivage")) or today
-        row = {col: (to_date(source.get(col)) if col in DATE_COLUMNS else to_text(source.get(col)))
-               for col in COLUMNS if col != "id_odoo"}
-        row["id_odoo"] = pid
-        row["date_archivage"] = date_archivage
-        archive_rows.append(row)
-    archive_rows.sort(key=lambda r: r["date_archivage"] or today, reverse=True)
-
-    return main_rows, archive_rows
-
-
-def build_summary(main_rows):
-    """Tableau (étape x chef de projet) : nombre de projets, dans l'ordre des étapes."""
-    if not main_rows:
-        return [], []
-    managers = sorted({r["chef_de_projet"] or "(non assigné)" for r in main_rows}, key=normalize)
-    stages = []
-    for r in main_rows:  # main_rows est déjà trié par étape
-        if r["stage_id"] not in stages:
-            stages.append(r["stage_id"])
-    table = []
-    for stage in stages:
-        counts = [sum(1 for r in main_rows
-                      if r["stage_id"] == stage and (r["chef_de_projet"] or "(non assigné)") == m)
-                  for m in managers]
-        table.append([stage or "(sans étape)"] + counts + [sum(counts)])
-    totals = [sum(row[i] for row in table) for i in range(1, len(managers) + 2)]
-    table.append(["Total"] + totals)
-    return ["Étape"] + managers + ["Total"], table
-
-
-# ==================================================================
-#  ÉCRITURE DU FICHIER EXCEL
-# ==================================================================
-THIN_BORDER = Border(*([Side(style="thin", color="D9D9D9")] * 4))
-STAGE_BREAK_BORDER = Border(left=Side(style="thin", color="D9D9D9"),
-                            right=Side(style="thin", color="D9D9D9"),
-                            bottom=Side(style="thin", color="D9D9D9"),
-                            top=Side(style="medium", color="1F4E78"))
-BAND_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-HEADER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-HEADER_FONT = Font(color="FFFFFF", bold=True)
-
-
-# ==================================================================
-#  FEUILLE D'ACCUEIL (filtres)
-# ==================================================================
-HOME_FIRST_ROW = 12   # première ligne de résultats sur l'accueil
-# (clé de colonne, libellé, cellule du filtre sur l'accueil)
-HOME_FILTERS = [
-    ("stage_id", "Étape", "C5"),
-    ("chef_de_projet", "Chef de projet", "C6"),
-    ("etiquettes", "Étiquette", "C7"),
-    ("responsable_action", "Responsable action", "C8"),
-]
-HOME_RESULT_COLUMNS = ["numero_projet", "description", "partner_id", "stage_id", "etiquettes",
-                       "chef_de_projet", "responsable_action", "date_debut", "date_fin",
-                       "actions_a_entreprendre", "statut"]
-
-
-def _filter_col_letter(columns):
-    """Colonne technique (cachée) qui numérote les projets passant les filtres."""
-    return get_column_letter(len(columns) + 1)
-
-
-def _write_filter_helper(ws, columns, rows):
-    """Colonne technique : 1, 2, 3... pour les lignes qui passent les filtres
-    de l'accueil, vide sinon. L'accueil s'en sert pour lister les résultats."""
-    letter = _filter_col_letter(columns)
-    ws[f"{letter}1"] = "Filtre"
-    ws[f"{letter}1"].font = HEADER_FONT
-    ws[f"{letter}1"].fill = HEADER_FILL
-    for r in range(2, len(rows) + 2):
-        tests = []
-        for key, _label, cell in HOME_FILTERS:
-            ref = f"{SHEET_HOME}!${cell[0]}${cell[1:]}"
-            col = f"{get_column_letter(columns.index(key) + 1)}{r}"
-            if key == "etiquettes":  # étiquette exacte dans la liste "a, b, c"
-                match = f'ISNUMBER(SEARCH(", "&{ref}&", ", ", "&{col}&", "))'
-            else:
-                match = f"{col}={ref}"
-            tests.append(f'OR({ref}="",{ref}="{ALL_LABEL}",{match})')
-        ws[f"{letter}{r}"] = f'=IF(AND({",".join(tests)}),MAX({letter}$1:{letter}{r - 1})+1,"")'
-    ws.column_dimensions[letter].hidden = True
-
-
-ALL_LABEL = "(Tous)"
-
-
-def _write_home(ws, ws_lists, main_rows):
-    ws.title = SHEET_HOME
-    ws_lists.title = SHEET_LISTS
-    ws_lists.sheet_state = "hidden"
-    n = len(main_rows)
-    main_letter_filter = _filter_col_letter(COLUMNS)
-    main_ref = f"'{SHEET_MAIN}'"
-    last = n + 1  # dernière ligne de données de la feuille principale
-
-    ws.sheet_view.showGridLines = False
-    ws["B2"] = "Projets Engineering - Réunion"
-    ws["B2"].font = Font(size=16, bold=True, color="1F4E78")
-    ws["B3"] = ("Choisissez une valeur dans chaque liste déroulante (cellule vide ou \"(Tous)\" = "
-                "pas de filtre). Les filtres se cumulent.")
-    ws["B3"].font = Font(italic=True, color="595959")
-
-    # --- Listes de valeurs pour les menus déroulants ---
-    from openpyxl.worksheet.datavalidation import DataValidation
-    for list_col, (key, label, cell) in enumerate(HOME_FILTERS, start=1):
-        if key == "etiquettes":
-            values = {t.strip() for r in main_rows for t in (r[key] or "").split(",") if t.strip()}
-        else:
-            values = {r[key] for r in main_rows if r[key]}
-        if key == "stage_id":  # ordre voulu des étapes
-            ordered = []
-            for r in main_rows:
-                if r[key] and r[key] not in ordered:
-                    ordered.append(r[key])
-        else:
-            ordered = sorted(values, key=normalize)
-        ws_lists.cell(row=1, column=list_col, value=ALL_LABEL)
-        for i, v in enumerate(ordered, start=2):
-            ws_lists.cell(row=i, column=list_col, value=v)
-        letter = get_column_letter(list_col)
-        dv = DataValidation(type="list", formula1=f"={SHEET_LISTS}!${letter}$1:${letter}${len(ordered) + 1}",
-                            allow_blank=True, showErrorMessage=False)
-        ws.add_data_validation(dv)
-        dv.add(cell)
-
-        ws[f"B{cell[1:]}"] = label
-        ws[f"B{cell[1:]}"].font = Font(bold=True)
-        ws[cell].fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-        ws[cell].border = Border(*([Side(style="thin", color="7F7F7F")] * 4))
-
-    # --- "Bouton" Effacer : lien qui sélectionne les 4 cellules de filtre ---
-    from openpyxl.worksheet.hyperlink import Hyperlink
-    clear = ws["E5"]
-    clear.value = "🧹 Effacer les filtres"
-    clear.hyperlink = Hyperlink(ref="E5", location=f"{SHEET_HOME}!C5:C8", display=clear.value)
-    clear.font = Font(bold=True, color="FFFFFF")
-    clear.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
-    clear.alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells("E5:F6")
-    ws["E7"] = "Clic = sélectionne les 4 filtres, puis touche Suppr."
-    ws["E7"].font = Font(italic=True, size=9, color="595959")
-
-    # --- Compteur ---
-    ws["B10"] = "Projets affichés :"
-    ws["B10"].font = Font(bold=True)
-    ws["C10"] = f"=COUNT({main_ref}!${main_letter_filter}$2:${main_letter_filter}${max(last, 2)})"
-    ws["D10"] = f'="sur {n}"'
-
-    # --- En-têtes des résultats ---
-    # Colonne A (cachée) = ligne de la feuille principale correspondant au n-ième résultat
-    for c, key in enumerate(HOME_RESULT_COLUMNS, start=2):
-        cell = ws.cell(row=HOME_FIRST_ROW - 1, column=c, value=HEADER_MAP[key])
-        cell.font, cell.fill = HEADER_FONT, HEADER_FILL
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
-
-    filt_rng = f"{main_ref}!${main_letter_filter}$2:${main_letter_filter}${max(last, 2)}"
-    for k in range(1, n + 1):
-        r = HOME_FIRST_ROW + k - 1
-        ws[f"A{r}"] = f'=IFERROR(MATCH({k},{filt_rng},0),"")'
-        for c, key in enumerate(HOME_RESULT_COLUMNS, start=2):
-            col_letter = get_column_letter(COLUMNS.index(key) + 1)
-            rng = f"{main_ref}!${col_letter}$2:${col_letter}${max(last, 2)}"
-            cell = ws.cell(row=r, column=c,
-                           value=f'=IF($A{r}="","",IF(INDEX({rng},$A{r})="","",INDEX({rng},$A{r})))')
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
-            if key in DATE_COLUMNS:
-                cell.number_format = "DD/MM/YYYY"
-        ws.row_dimensions[r].height = 32
-
-    # Bordures / bandes uniquement sur les lignes qui contiennent un résultat
-    last_letter = get_column_letter(len(HOME_RESULT_COLUMNS) + 1)
-    if n:
-        ws.conditional_formatting.add(
-            f"B{HOME_FIRST_ROW}:{last_letter}{HOME_FIRST_ROW + n - 1}",
-            FormulaRule(formula=[f'$A{HOME_FIRST_ROW}<>""'],
-                        border=Border(*([Side(style="thin", color="D9D9D9")] * 4))))
-
-    widths = {"numero_projet": 12, "description": 32, "partner_id": 22, "stage_id": 20,
-              "etiquettes": 22, "chef_de_projet": 18, "responsable_action": 18,
-              "date_debut": 12, "date_fin": 12, "actions_a_entreprendre": 34, "statut": 14}
-    ws.column_dimensions["A"].hidden = True
-    ws.column_dimensions["A"].width = 4
-    for c, key in enumerate(HOME_RESULT_COLUMNS, start=2):
-        ws.column_dimensions[get_column_letter(c)].width = widths.get(key, 15)
-    ws.column_dimensions["B"].width = 20
-    ws.column_dimensions["C"].width = 32
-    ws.freeze_panes = f"B{HOME_FIRST_ROW}"
-
-
-def write_workbook(main_rows, archive_rows, output_file):
-    wb = Workbook()
-    ws_home = wb.active
-    ws_main = wb.create_sheet(SHEET_MAIN)
-    _write_sheet(ws_main, SHEET_MAIN, COLUMNS, HEADER_MAP, main_rows, is_main=True)
-    _write_home(ws_home, wb.create_sheet(SHEET_LISTS), main_rows)
-    _write_summary(wb.create_sheet(SHEET_SUMMARY), main_rows)
-    _write_sheet(wb.create_sheet(SHEET_ARCHIVE), SHEET_ARCHIVE, ARCHIVE_COLUMNS,
-                 ARCHIVE_HEADER_MAP, archive_rows, is_main=False)
-    wb.save(output_file)
-
-
-def _write_summary(ws, main_rows):
-    ws.title = SHEET_SUMMARY
-    header, table = build_summary(main_rows)
-    for c, label in enumerate(header, start=1):
-        cell = ws.cell(row=1, column=c, value=label)
-        cell.font, cell.fill = HEADER_FONT, HEADER_FILL
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    for r, line in enumerate(table, start=2):
-        for c, value in enumerate(line, start=1):
-            cell = ws.cell(row=r, column=c, value=value)
-            cell.border = THIN_BORDER
-            if c > 1:
-                cell.alignment = Alignment(horizontal="center")
-            if r == len(table) + 1:
-                cell.font = Font(bold=True)
-    ws.column_dimensions["A"].width = 24
-    for c in range(2, len(header) + 1):
-        ws.column_dimensions[get_column_letter(c)].width = 18
-    ws.freeze_panes = "B2"
-
-
-def _write_sheet(ws, title, columns, header_map, rows, is_main):
-    ws.title = title
-
-    for col_idx, col_key in enumerate(columns, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=header_map[col_key])
-        cell.font, cell.fill = HEADER_FONT, HEADER_FILL
-        cell.alignment = Alignment(vertical="center", wrap_text=True)
-    ws.row_dimensions[1].height = 45
-
-    previous_stage = None
-    for row_idx, row in enumerate(rows, start=2):
-        band = (row_idx % 2 == 0)
-        ws.row_dimensions[row_idx].height = 45
-        # Trait épais à chaque changement d'étape (feuille principale)
-        stage_changed = is_main and row.get("stage_id") != previous_stage
-        previous_stage = row.get("stage_id")
-        for col_idx, col_key in enumerate(columns, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=row.get(col_key, ""))
-            cell.border = STAGE_BREAK_BORDER if stage_changed else THIN_BORDER
-            if band:
-                cell.fill = BAND_FILL
-            if col_key in DATE_COLUMNS or col_key == "date_archivage":
-                cell.number_format = "DD/MM/YYYY"
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
-            if col_key == "stage_id":
-                cell.font = Font(bold=True)
-
-    last_row = max(len(rows) + 1, 2)
-    last_col_letter = get_column_letter(len(columns))
-
-    width_map = {
-        "id_odoo": 9, "numero_projet": 12, "description": 30, "partner_id": 22,
-        "stage_id": 18, "etiquettes": 20, "chef_de_projet": 18, "date_debut": 12, "date_fin": 12,
-        "sujets_a_discuter": 32, "actions_a_entreprendre": 32,
-        "responsable_action": 16, "date_limite": 12, "statut": 14,
-        "derniere_review": 14, "commentaires": 28, "date_archivage": 12,
-    }
-    for col_idx, col_key in enumerate(columns, start=1):
-        ws.column_dimensions[get_column_letter(col_idx)].width = width_map.get(col_key, 15)
-    ws.column_dimensions[get_column_letter(columns.index("id_odoo") + 1)].hidden = True
-
-    ws.auto_filter.ref = f"A1:{last_col_letter}{last_row}"
-    ws.freeze_panes = f"{get_column_letter(columns.index('description') + 2)}2"
-
-    if is_main:
-        _write_filter_helper(ws, columns, rows)
-
-    if not is_main or not rows:
-        return
-
-    # Action en retard et pas terminée -> ligne en rouge
-    statut = get_column_letter(columns.index("statut") + 1)
-    limite = get_column_letter(columns.index("date_limite") + 1)
-    formula = (f'AND(${limite}2<>"",${limite}2<TODAY(),'
-               f'LOWER(TRIM(${statut}2))<>"fait")')
-    ws.conditional_formatting.add(
-        f"A2:{last_col_letter}{last_row}",
-        FormulaRule(formula=[formula],
-                    fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
-    )
 
 
 # ==================================================================
 #  ODOO
 # ==================================================================
 def fetch_projects():
+    """Retourne la liste des projets (dicts simples), triés."""
     global USERNAME, PASSWORD
     if not USERNAME or not PASSWORD:
         if not (sys.stdin and sys.stdin.isatty()):
@@ -626,47 +232,386 @@ def fetch_projects():
         numero, description = split_project_name(p["display_name"])
         projects.append({
             "id": p["id"],
-            "numero_projet": numero,
+            "numero": numero,
             "description": description,
-            "partner_id": p["partner_id"][1] if p["partner_id"] else "",
-            "stage_id": stage,
-            "tags": ", ".join(tag_names.get(tid, "") for tid in p["tag_ids"]),
+            "client": p["partner_id"][1] if p["partner_id"] else "",
+            "stage": stage or "(sans étape)",
+            "tags": [tag_names[tid] for tid in p["tag_ids"] if tid in tag_names],
             "manager": p["user_id"][1] if p["user_id"] else "",
-            "date_start": p["date_start"],
-            "date_end": p["date"],
+            "date_start": iso_date(p["date_start"]),
+            "date_end": iso_date(p["date"]),
         })
-    return projects
+    return sort_projects(projects)
+
+
+# ==================================================================
+#  NOTES (sujets + actions), sauvegardées dans notes_reunion.json
+# ==================================================================
+def clean_note(raw):
+    """Valide/normalise une note reçue du navigateur. Lève ValueError si invalide."""
+    if not isinstance(raw, dict):
+        raise ValueError("note invalide")
+    sujets = str(raw.get("sujets", ""))[:20000]
+    review = str(raw.get("derniere_review", ""))
+    review = review if ISO_DATE_RE.match(review) else ""
+    actions = []
+    for a in (raw.get("actions") or [])[:200]:
+        if not isinstance(a, dict):
+            continue
+        due = str(a.get("due", ""))
+        actions.append({
+            "id": str(a.get("id", ""))[:40] or secrets.token_hex(4),
+            "text": str(a.get("text", ""))[:2000],
+            "owner": str(a.get("owner", ""))[:100],
+            "done": bool(a.get("done", False)),
+            "due": due if ISO_DATE_RE.match(due) else "",
+        })
+    return {"sujets": sujets, "actions": actions, "derniere_review": review}
+
+
+def note_has_content(note):
+    return bool(note and (note["sujets"].strip() or note["actions"]))
+
+
+class NotesStore:
+    """Projets courants + notes persistées. Thread-safe."""
+
+    def __init__(self, path):
+        self.path = path
+        self.lock = threading.RLock()
+        self.projects = []
+        self.data = {"version": 1, "notes": {}, "snapshots": {}, "archived_on": {}}
+        self._load()
+
+    def _load(self):
+        if not os.path.exists(self.path):
+            return
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                loaded = json.load(f)
+            for key in self.data:
+                if key in loaded:
+                    self.data[key] = loaded[key]
+        except (OSError, ValueError) as exc:
+            # On ne l'écrase surtout pas : on met le fichier de côté.
+            backup = self.path + ".illisible"
+            os.replace(self.path, backup)
+            print(f"⚠️  {self.path} illisible ({exc}) : renommé en {backup}.")
+
+    def _save(self):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, self.path)
+
+    def set_projects(self, projects):
+        """Met à jour la liste courante, les instantanés et l'état « archivé »."""
+        with self.lock:
+            self.projects = projects
+            today = datetime.date.today().isoformat()
+            current = {str(p["id"]) for p in projects}
+            for p in projects:
+                self.data["snapshots"][str(p["id"])] = p
+                self.data["archived_on"].pop(str(p["id"]), None)
+            for pid, note in self.data["notes"].items():
+                if pid not in current and note_has_content(note):
+                    self.data["archived_on"].setdefault(pid, today)
+            self._save()
+
+    def state(self):
+        with self.lock:
+            current = {str(p["id"]) for p in self.projects}
+            return {
+                "projects": self.projects,
+                "notes": {pid: n for pid, n in self.data["notes"].items() if pid in current},
+                "stage_order": STAGE_ORDER,
+                "generated_at": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "archived_count": len(self.archived_rows()),
+            }
+
+    def set_note(self, pid, raw):
+        note = clean_note(raw)
+        with self.lock:
+            if pid not in {str(p["id"]) for p in self.projects}:
+                raise ValueError("projet inconnu")
+            self.data["notes"][pid] = note
+            self._save()
+
+    def archived_rows(self):
+        with self.lock:
+            current = {str(p["id"]) for p in self.projects}
+            rows = []
+            for pid, since in self.data["archived_on"].items():
+                note = self.data["notes"].get(pid)
+                snap = self.data["snapshots"].get(pid)
+                if pid not in current and snap and note_has_content(note):
+                    rows.append((snap, note, since))
+            rows.sort(key=lambda r: r[2], reverse=True)
+            return rows
+
+    def rows(self, ids=None):
+        """[(projet, note)] dans l'ordre d'affichage, filtrés par ids (str) si fourni."""
+        with self.lock:
+            empty = {"sujets": "", "actions": [], "derniere_review": ""}
+            return [(p, self.data["notes"].get(str(p["id"]), empty)) for p in self.projects
+                    if ids is None or str(p["id"]) in ids]
+
+
+# ==================================================================
+#  EXPORT EXCEL
+# ==================================================================
+THIN_BORDER = Border(*([Side(style="thin", color="D9D9D9")] * 4))
+BAND_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+HEADER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+HEADER_FONT = Font(color="FFFFFF", bold=True)
+
+EXPORT_HEADERS = ["N° Projet", "Projet", "Client", "Étape", "Étiquettes", "Chef de projet",
+                  "Date début", "Date fin", "Sujets à discuter", "Actions à entreprendre",
+                  "Dernière review"]
+EXPORT_WIDTHS = [12, 30, 22, 20, 24, 18, 12, 12, 40, 55, 14]
+
+
+def actions_text(actions):
+    """☐/☑ texte — responsable (échéance), une action par ligne."""
+    lines = []
+    for a in actions:
+        line = ("☑ " if a["done"] else "☐ ") + (a["text"].strip() or "(sans titre)")
+        if a["owner"].strip():
+            line += f" — {a['owner'].strip()}"
+        if a["due"]:
+            line += f" (échéance {fr_date(a['due'])})"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def build_summary(rows):
+    """Tableau (étape x chef de projet) : nombre de projets, dans l'ordre des étapes."""
+    if not rows:
+        return [], []
+    managers = sorted({p["manager"] or NO_MANAGER for p, _ in rows}, key=normalize)
+    stages = []
+    for p, _ in rows:  # déjà trié par étape
+        if p["stage"] not in stages:
+            stages.append(p["stage"])
+    table = []
+    for stage in stages:
+        counts = [sum(1 for p, _ in rows
+                      if p["stage"] == stage and (p["manager"] or NO_MANAGER) == m)
+                  for m in managers]
+        table.append([stage] + counts + [sum(counts)])
+    totals = [sum(row[i] for row in table) for i in range(1, len(managers) + 2)]
+    table.append(["Total"] + totals)
+    return ["Étape"] + managers + ["Total"], table
+
+
+def _write_table(ws, headers, widths, lines):
+    for c, label in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=c, value=label)
+        cell.font, cell.fill = HEADER_FONT, HEADER_FILL
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+        ws.column_dimensions[get_column_letter(c)].width = widths[c - 1]
+    ws.row_dimensions[1].height = 30
+    for r, line in enumerate(lines, start=2):
+        n_lines = 1
+        for c, value in enumerate(line, start=1):
+            cell = ws.cell(row=r, column=c, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if r % 2 == 0:
+                cell.fill = BAND_FILL
+            if isinstance(value, str):
+                width = widths[c - 1]
+                n_lines = max(n_lines, sum(max(1, -(-len(part) // max(width - 2, 1)))
+                                           for part in value.split("\n")))
+        ws.row_dimensions[r].height = min(max(30, 15 * n_lines), 400)
+    ws.freeze_panes = "C2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(len(lines) + 1, 2)}"
+
+
+def export_workbook(rows, archived):
+    """rows : [(projet, note)] ; archived : [(snapshot, note, date_iso)] -> bytes xlsx."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Réunion"
+    _write_table(ws, EXPORT_HEADERS, EXPORT_WIDTHS, [
+        [p["numero"], p["description"], p["client"], p["stage"], ", ".join(p["tags"]),
+         p["manager"], fr_date(p["date_start"]), fr_date(p["date_end"]),
+         n["sujets"], actions_text(n["actions"]), fr_date(n["derniere_review"])]
+        for p, n in rows])
+
+    ws_sum = wb.create_sheet("Synthèse")
+    header, table = build_summary(rows)
+    for c, label in enumerate(header, start=1):
+        cell = ws_sum.cell(row=1, column=c, value=label)
+        cell.font, cell.fill = HEADER_FONT, HEADER_FILL
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+    for r, line in enumerate(table, start=2):
+        for c, value in enumerate(line, start=1):
+            cell = ws_sum.cell(row=r, column=c, value=value)
+            cell.border = THIN_BORDER
+            if c > 1:
+                cell.alignment = Alignment(horizontal="center")
+            if r == len(table) + 1:
+                cell.font = Font(bold=True)
+    ws_sum.column_dimensions["A"].width = 24
+    for c in range(2, len(header) + 1):
+        ws_sum.column_dimensions[get_column_letter(c)].width = 18
+
+    ws_arc = wb.create_sheet("Projets archivés")
+    _write_table(ws_arc, EXPORT_HEADERS + ["Archivé le"], EXPORT_WIDTHS + [12], [
+        [p["numero"], p["description"], p["client"], p["stage"], ", ".join(p["tags"]),
+         p["manager"], fr_date(p["date_start"]), fr_date(p["date_end"]),
+         n["sujets"], actions_text(n["actions"]), fr_date(n["derniere_review"]), fr_date(since)]
+        for p, n, since in archived])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# ==================================================================
+#  SERVEUR LOCAL (127.0.0.1 uniquement)
+# ==================================================================
+def make_handler(store, token, ui_path, refresh_fn, quit_fn):
+
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "Reunion/1.0"
+
+        def log_message(self, *args):  # silence
+            pass
+
+        # -- utilitaires -------------------------------------------------
+        def _host_ok(self):
+            host = (self.headers.get("Host") or "").split(":")[0]
+            return host in ("127.0.0.1", "localhost")
+
+        def _send(self, code, body, ctype="application/json; charset=utf-8", extra=None):
+            if isinstance(body, str):
+                body = body.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json(self, obj, code=200):
+            self._send(code, json.dumps(obj, ensure_ascii=False))
+
+        def _authorized(self, query):
+            supplied = self.headers.get("X-Token") or (query.get("t") or [""])[0]
+            return secrets.compare_digest(supplied, token)
+
+        # -- routes ------------------------------------------------------
+        def do_GET(self):
+            if not self._host_ok():
+                return self._send(403, "forbidden", "text/plain")
+            url = urllib.parse.urlparse(self.path)
+            query = urllib.parse.parse_qs(url.query)
+            if url.path == "/":
+                with open(ui_path, encoding="utf-8") as f:
+                    html = f.read().replace("__TOKEN__", token)
+                return self._send(200, html, "text/html; charset=utf-8")
+            if url.path == "/favicon.ico":
+                return self._send(204, b"", "image/x-icon")
+            if not self._authorized(query):
+                return self._json({"error": "token invalide"}, 403)
+            if url.path == "/api/state":
+                return self._json(store.state())
+            if url.path == "/api/export.xlsx":
+                ids = None
+                if "ids" in query:
+                    ids = {i for i in query["ids"][0].split(",") if i}
+                data = export_workbook(store.rows(ids), store.archived_rows())
+                name = f"reunion_engineering_{datetime.date.today().isoformat()}.xlsx"
+                return self._send(
+                    200, data,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    {"Content-Disposition": f'attachment; filename="{name}"'})
+            return self._json({"error": "introuvable"}, 404)
+
+        def do_POST(self):
+            if not self._host_ok():
+                return self._send(403, "forbidden", "text/plain")
+            url = urllib.parse.urlparse(self.path)
+            if not self._authorized(urllib.parse.parse_qs(url.query)):
+                return self._json({"error": "token invalide"}, 403)
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 2_000_000:
+                return self._json({"error": "trop gros"}, 413)
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                return self._json({"error": "JSON invalide"}, 400)
+
+            if url.path == "/api/note":
+                try:
+                    store.set_note(str(body.get("id")), body)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                return self._json({"ok": True})
+            if url.path == "/api/refresh":
+                try:
+                    refresh_fn()
+                except Exception as exc:  # noqa: BLE001 - renvoyé à l'interface
+                    traceback.print_exc()
+                    return self._json({"error": str(exc)}, 500)
+                return self._json(store.state())
+            if url.path == "/api/quit":
+                self._json({"ok": True})
+                quit_fn()
+                return None
+            return self._json({"error": "introuvable"}, 404)
+
+    return Handler
+
+
+def serve(store):
+    token = secrets.token_urlsafe(24)
+    httpd = None
+
+    def refresh():
+        store.set_projects(fetch_projects())
+
+    def quit_server():
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+    handler = make_handler(store, token, os.path.join(script_dir, UI_FILE), refresh, quit_server)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/"
+    print(f"\n🌐 Page de réunion : {url}")
+    print("   (ouverture dans le navigateur ; Ctrl+C ou bouton « Quitter » pour arrêter)")
+    webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+        print("👋 Serveur arrêté. Vos notes sont dans", os.path.abspath(NOTES_FILE))
 
 
 def main():
+    store = NotesStore(NOTES_FILE)
     projects = fetch_projects()
-
-    print("📂 Lecture de l'ancien fichier (si présent)...")
-    old_main, old_archive = load_previous_notes(OUTPUT_FILE)
-
-    unknown = {p["stage_id"] for p in projects if stage_priority(p["stage_id"]) == len(STAGE_ORDER)}
+    unknown = {p["stage"] for p in projects if stage_priority(p["stage"]) == len(STAGE_ORDER)}
     if unknown:
         print(f"⚠️  Étape(s) absente(s) de STAGE_ORDER (placées en fin de liste) : {sorted(unknown)}")
         print("   -> Corrigez STAGE_ORDER en haut du script si l'orthographe diffère.")
-
-    main_rows, archive_rows = build_rows(projects, old_main, old_archive)
-
-    print("💾 Écriture du fichier Excel...")
-    try:
-        write_workbook(main_rows, archive_rows, OUTPUT_FILE)
-        print(f"\n✅ Export terminé : {OUTPUT_FILE}")
-        print(f"   - {len(main_rows)} projets actifs")
-        print(f"   - {len(archive_rows)} projets archivés (clôturés / sortis des critères)")
-    except PermissionError:
-        print(f"\n❌ Fichier '{OUTPUT_FILE}' déjà ouvert. Fermez-le et réessayez.")
+    store.set_projects(projects)
+    serve(store)
 
 
 if __name__ == "__main__":
+    failed = False
     try:
         main()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        failed = True
         print(f"\n❌ Erreur : {e}")
         traceback.print_exc()
     finally:
-        if sys.stdin and sys.stdin.isatty():
+        if failed and sys.stdin and sys.stdin.isatty():
             input("\nAppuyez sur Entrée pour fermer...")

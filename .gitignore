@@ -1,3 +1,5 @@
 .env
 *.xlsx
 __pycache__/
+notes_reunion.json
+notes_reunion.json.*
