@@ -12,6 +12,7 @@ Identifiants : variables d'environnement ODOO_URL, ODOO_DB, ODOO_USER,
 ODOO_PASSWORD, ou fichier .env à côté du script (voir .env.example).
 """
 import datetime
+import getpass
 import os
 import re
 import sys
@@ -388,9 +389,14 @@ def _write_sheet(ws, title, columns, header_map, rows, is_main):
 #  ODOO
 # ==================================================================
 def fetch_projects():
+    global USERNAME, PASSWORD
     if not USERNAME or not PASSWORD:
-        raise Exception("Identifiants manquants : définissez ODOO_USER et ODOO_PASSWORD "
-                        "(variables d'environnement ou fichier .env, voir .env.example).")
+        if not (sys.stdin and sys.stdin.isatty()):
+            raise Exception("Identifiants manquants : définissez ODOO_USER et ODOO_PASSWORD "
+                            "(variables d'environnement ou fichier .env, voir .env.example).")
+        print("ℹ️  Aucun identifiant trouvé (.env / variables d'environnement) : saisie manuelle.")
+        USERNAME = USERNAME or input("Identifiant Odoo (email) : ").strip()
+        PASSWORD = PASSWORD or getpass.getpass("Mot de passe (invisible à la saisie) : ")
 
     print("🔌 Connexion à Odoo...")
     common = xmlrpc.client.ServerProxy(f"{URL}/xmlrpc/2/common", allow_none=True)
