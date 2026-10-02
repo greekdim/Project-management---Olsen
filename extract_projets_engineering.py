@@ -41,16 +41,30 @@ os.chdir(script_dir)
 #  PARAMÈTRES
 # ==================================================================
 def load_dotenv(path=".env"):
-    """Charge un fichier .env minimal (KEY=VALUE) sans écraser l'environnement."""
+    """Charge un fichier .env minimal (KEY=VALUE) et affiche un diagnostic."""
+    full = os.path.abspath(path)
     if not os.path.exists(path):
+        print(f"ℹ️  Pas de fichier .env trouvé : {full}")
+        for alt in (".env.txt", "env", "env.txt", ".env.example.txt"):
+            if os.path.exists(alt):
+                print(f"⚠️  Mais '{alt}' existe : renommez-le exactement en '.env' "
+                      "(activez Affichage > Extensions de noms de fichiers dans l'Explorateur).")
         return
-    with open(path, encoding="utf-8") as f:
+    found = []
+    # utf-8-sig : tolère le BOM ajouté par le Bloc-notes
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
+            if line.lower().startswith("export "):
+                line = line[7:]
             key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+            key, value = key.strip(), value.strip().strip('"').strip("'")
+            if value:
+                os.environ[key] = value
+                found.append(key)
+    print(f"ℹ️  .env lu ({full}) : clés renseignées = {found or 'aucune'}")
 
 
 load_dotenv()
