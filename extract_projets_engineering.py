@@ -88,13 +88,21 @@ STAGE_ORDER = [
     "Nouveau",
 ]
 
+# Orthographes alternatives d'une même étape (même position de tri).
+# "Récepton et CE" (faute présente dans Odoo) passe juste après "Facture finale".
+STAGE_SYNONYMS = {
+    "Réception et CE": ["Récepton et CE", "Reception et CE"],
+}
+
 OUTPUT_FILE = "project_review_odoo.xlsx"
+SHEET_HOME = "Accueil"
+SHEET_LISTS = "Listes"
 SHEET_MAIN = "Projets actifs"
 SHEET_SUMMARY = "Synthèse"
 SHEET_ARCHIVE = "Projets archivés"
 
 COLUMNS = [
-    "id_odoo", "numero_projet", "description", "partner_id", "stage_id", "chef_de_projet",
+    "id_odoo", "numero_projet", "description", "partner_id", "stage_id", "etiquettes", "chef_de_projet",
     "date_debut", "date_fin",
     "sujets_a_discuter", "actions_a_entreprendre", "responsable_action",
     "date_limite", "statut", "derniere_review", "commentaires",
@@ -107,6 +115,7 @@ HEADER_MAP = {
     "description": "Projet",
     "partner_id": "Client",
     "stage_id": "Étape",
+    "etiquettes": "Étiquettes",
     "chef_de_projet": "Chef de projet",
     "date_debut": "Date début",
     "date_fin": "Date fin",
@@ -134,6 +143,9 @@ def normalize(text):
 
 
 STAGE_PRIORITY = {normalize(name): i for i, name in enumerate(STAGE_ORDER)}
+for _name, _aliases in STAGE_SYNONYMS.items():
+    for _alias in _aliases:
+        STAGE_PRIORITY[normalize(_alias)] = STAGE_PRIORITY[normalize(_name)]
 EXCLUSIONS_NORMALIZED = {normalize(e) for e in EXCLUSIONS}
 
 
@@ -239,6 +251,7 @@ def build_rows(projects, old_main, old_archive):
             "description": p["description"],
             "partner_id": p["partner_id"],
             "stage_id": p["stage_id"],
+            "etiquettes": p.get("tags", ""),
             "chef_de_projet": p["manager"] or "",
             "date_debut": to_date(p["date_start"]),
             "date_fin": to_date(p["date_end"]),
@@ -310,9 +323,160 @@ HEADER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="s
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 
 
+# ==================================================================
+#  FEUILLE D'ACCUEIL (filtres)
+# ==================================================================
+HOME_FIRST_ROW = 12   # première ligne de résultats sur l'accueil
+# (clé de colonne, libellé, cellule du filtre sur l'accueil)
+HOME_FILTERS = [
+    ("stage_id", "Étape", "C5"),
+    ("chef_de_projet", "Chef de projet", "C6"),
+    ("etiquettes", "Étiquette", "C7"),
+    ("responsable_action", "Responsable action", "C8"),
+]
+HOME_RESULT_COLUMNS = ["numero_projet", "description", "partner_id", "stage_id", "etiquettes",
+                       "chef_de_projet", "responsable_action", "date_debut", "date_fin",
+                       "actions_a_entreprendre", "statut"]
+
+
+def _filter_col_letter(columns):
+    """Colonne technique (cachée) qui numérote les projets passant les filtres."""
+    return get_column_letter(len(columns) + 1)
+
+
+def _write_filter_helper(ws, columns, rows):
+    """Colonne technique : 1, 2, 3... pour les lignes qui passent les filtres
+    de l'accueil, vide sinon. L'accueil s'en sert pour lister les résultats."""
+    letter = _filter_col_letter(columns)
+    ws[f"{letter}1"] = "Filtre"
+    ws[f"{letter}1"].font = HEADER_FONT
+    ws[f"{letter}1"].fill = HEADER_FILL
+    for r in range(2, len(rows) + 2):
+        tests = []
+        for key, _label, cell in HOME_FILTERS:
+            ref = f"{SHEET_HOME}!${cell[0]}${cell[1:]}"
+            col = f"{get_column_letter(columns.index(key) + 1)}{r}"
+            if key == "etiquettes":  # étiquette exacte dans la liste "a, b, c"
+                match = f'ISNUMBER(SEARCH(", "&{ref}&", ", ", "&{col}&", "))'
+            else:
+                match = f"{col}={ref}"
+            tests.append(f'OR({ref}="",{ref}="{ALL_LABEL}",{match})')
+        ws[f"{letter}{r}"] = f'=IF(AND({",".join(tests)}),MAX({letter}$1:{letter}{r - 1})+1,"")'
+    ws.column_dimensions[letter].hidden = True
+
+
+ALL_LABEL = "(Tous)"
+
+
+def _write_home(ws, ws_lists, main_rows):
+    ws.title = SHEET_HOME
+    ws_lists.title = SHEET_LISTS
+    ws_lists.sheet_state = "hidden"
+    n = len(main_rows)
+    main_letter_filter = _filter_col_letter(COLUMNS)
+    main_ref = f"'{SHEET_MAIN}'"
+    last = n + 1  # dernière ligne de données de la feuille principale
+
+    ws.sheet_view.showGridLines = False
+    ws["B2"] = "Projets Engineering - Réunion"
+    ws["B2"].font = Font(size=16, bold=True, color="1F4E78")
+    ws["B3"] = ("Choisissez une valeur dans chaque liste déroulante (cellule vide ou \"(Tous)\" = "
+                "pas de filtre). Les filtres se cumulent.")
+    ws["B3"].font = Font(italic=True, color="595959")
+
+    # --- Listes de valeurs pour les menus déroulants ---
+    from openpyxl.worksheet.datavalidation import DataValidation
+    for list_col, (key, label, cell) in enumerate(HOME_FILTERS, start=1):
+        if key == "etiquettes":
+            values = {t.strip() for r in main_rows for t in (r[key] or "").split(",") if t.strip()}
+        else:
+            values = {r[key] for r in main_rows if r[key]}
+        if key == "stage_id":  # ordre voulu des étapes
+            ordered = []
+            for r in main_rows:
+                if r[key] and r[key] not in ordered:
+                    ordered.append(r[key])
+        else:
+            ordered = sorted(values, key=normalize)
+        ws_lists.cell(row=1, column=list_col, value=ALL_LABEL)
+        for i, v in enumerate(ordered, start=2):
+            ws_lists.cell(row=i, column=list_col, value=v)
+        letter = get_column_letter(list_col)
+        dv = DataValidation(type="list", formula1=f"={SHEET_LISTS}!${letter}$1:${letter}${len(ordered) + 1}",
+                            allow_blank=True, showErrorMessage=False)
+        ws.add_data_validation(dv)
+        dv.add(cell)
+
+        ws[f"B{cell[1:]}"] = label
+        ws[f"B{cell[1:]}"].font = Font(bold=True)
+        ws[cell].fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        ws[cell].border = Border(*([Side(style="thin", color="7F7F7F")] * 4))
+
+    # --- "Bouton" Effacer : lien qui sélectionne les 4 cellules de filtre ---
+    from openpyxl.worksheet.hyperlink import Hyperlink
+    clear = ws["E5"]
+    clear.value = "🧹 Effacer les filtres"
+    clear.hyperlink = Hyperlink(ref="E5", location=f"{SHEET_HOME}!C5:C8", display=clear.value)
+    clear.font = Font(bold=True, color="FFFFFF")
+    clear.fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+    clear.alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells("E5:F6")
+    ws["E7"] = "Clic = sélectionne les 4 filtres, puis touche Suppr."
+    ws["E7"].font = Font(italic=True, size=9, color="595959")
+
+    # --- Compteur ---
+    ws["B10"] = "Projets affichés :"
+    ws["B10"].font = Font(bold=True)
+    ws["C10"] = f"=COUNT({main_ref}!${main_letter_filter}$2:${main_letter_filter}${max(last, 2)})"
+    ws["D10"] = f'="sur {n}"'
+
+    # --- En-têtes des résultats ---
+    # Colonne A (cachée) = ligne de la feuille principale correspondant au n-ième résultat
+    for c, key in enumerate(HOME_RESULT_COLUMNS, start=2):
+        cell = ws.cell(row=HOME_FIRST_ROW - 1, column=c, value=HEADER_MAP[key])
+        cell.font, cell.fill = HEADER_FONT, HEADER_FILL
+        cell.alignment = Alignment(vertical="center", wrap_text=True)
+
+    filt_rng = f"{main_ref}!${main_letter_filter}$2:${main_letter_filter}${max(last, 2)}"
+    for k in range(1, n + 1):
+        r = HOME_FIRST_ROW + k - 1
+        ws[f"A{r}"] = f'=IFERROR(MATCH({k},{filt_rng},0),"")'
+        for c, key in enumerate(HOME_RESULT_COLUMNS, start=2):
+            col_letter = get_column_letter(COLUMNS.index(key) + 1)
+            rng = f"{main_ref}!${col_letter}$2:${col_letter}${max(last, 2)}"
+            cell = ws.cell(row=r, column=c,
+                           value=f'=IF($A{r}="","",IF(INDEX({rng},$A{r})="","",INDEX({rng},$A{r})))')
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if key in DATE_COLUMNS:
+                cell.number_format = "DD/MM/YYYY"
+        ws.row_dimensions[r].height = 32
+
+    # Bordures / bandes uniquement sur les lignes qui contiennent un résultat
+    last_letter = get_column_letter(len(HOME_RESULT_COLUMNS) + 1)
+    if n:
+        ws.conditional_formatting.add(
+            f"B{HOME_FIRST_ROW}:{last_letter}{HOME_FIRST_ROW + n - 1}",
+            FormulaRule(formula=[f'$A{HOME_FIRST_ROW}<>""'],
+                        border=Border(*([Side(style="thin", color="D9D9D9")] * 4))))
+
+    widths = {"numero_projet": 12, "description": 32, "partner_id": 22, "stage_id": 20,
+              "etiquettes": 22, "chef_de_projet": 18, "responsable_action": 18,
+              "date_debut": 12, "date_fin": 12, "actions_a_entreprendre": 34, "statut": 14}
+    ws.column_dimensions["A"].hidden = True
+    ws.column_dimensions["A"].width = 4
+    for c, key in enumerate(HOME_RESULT_COLUMNS, start=2):
+        ws.column_dimensions[get_column_letter(c)].width = widths.get(key, 15)
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 32
+    ws.freeze_panes = f"B{HOME_FIRST_ROW}"
+
+
 def write_workbook(main_rows, archive_rows, output_file):
     wb = Workbook()
-    _write_sheet(wb.active, SHEET_MAIN, COLUMNS, HEADER_MAP, main_rows, is_main=True)
+    ws_home = wb.active
+    ws_main = wb.create_sheet(SHEET_MAIN)
+    _write_sheet(ws_main, SHEET_MAIN, COLUMNS, HEADER_MAP, main_rows, is_main=True)
+    _write_home(ws_home, wb.create_sheet(SHEET_LISTS), main_rows)
     _write_summary(wb.create_sheet(SHEET_SUMMARY), main_rows)
     _write_sheet(wb.create_sheet(SHEET_ARCHIVE), SHEET_ARCHIVE, ARCHIVE_COLUMNS,
                  ARCHIVE_HEADER_MAP, archive_rows, is_main=False)
@@ -372,7 +536,7 @@ def _write_sheet(ws, title, columns, header_map, rows, is_main):
 
     width_map = {
         "id_odoo": 9, "numero_projet": 12, "description": 30, "partner_id": 22,
-        "stage_id": 18, "chef_de_projet": 18, "date_debut": 12, "date_fin": 12,
+        "stage_id": 18, "etiquettes": 20, "chef_de_projet": 18, "date_debut": 12, "date_fin": 12,
         "sujets_a_discuter": 32, "actions_a_entreprendre": 32,
         "responsable_action": 16, "date_limite": 12, "statut": 14,
         "derniere_review": 14, "commentaires": 28, "date_archivage": 12,
@@ -383,6 +547,9 @@ def _write_sheet(ws, title, columns, header_map, rows, is_main):
 
     ws.auto_filter.ref = f"A1:{last_col_letter}{last_row}"
     ws.freeze_panes = f"{get_column_letter(columns.index('description') + 2)}2"
+
+    if is_main:
+        _write_filter_helper(ws, columns, rows)
 
     if not is_main or not rows:
         return
@@ -441,8 +608,15 @@ def fetch_projects():
     if excluded_stage_ids:
         domain.append(['stage_id', 'not in', excluded_stage_ids])
     raw_projects = call('project.project', 'search_read', [domain], {
-        'fields': ['stage_id', 'display_name', 'partner_id', 'user_id', 'date_start', 'date']})
+        'fields': ['stage_id', 'display_name', 'partner_id', 'user_id', 'date_start', 'date',
+                   'tag_ids']})
     print(f"✅ {len(raw_projects)} projets récupérés.")
+
+    all_tag_ids = sorted({tid for p in raw_projects for tid in p['tag_ids']})
+    tag_names = {}
+    if all_tag_ids:
+        tag_names = {t['id']: t['name'] for t in call(
+            'project.tags', 'search_read', [[['id', 'in', all_tag_ids]]], {'fields': ['id', 'name']})}
 
     projects = []
     for p in raw_projects:
@@ -456,6 +630,7 @@ def fetch_projects():
             "description": description,
             "partner_id": p["partner_id"][1] if p["partner_id"] else "",
             "stage_id": stage,
+            "tags": ", ".join(tag_names.get(tid, "") for tid in p["tag_ids"]),
             "manager": p["user_id"][1] if p["user_id"] else "",
             "date_start": p["date_start"],
             "date_end": p["date"],
