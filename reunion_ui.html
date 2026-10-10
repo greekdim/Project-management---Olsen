@@ -6,81 +6,167 @@
 <title>Réunion engineering</title>
 <style>
 :root {
-  --bg: #f5f6f8; --surface: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #d9dee5;
-  --accent: #1f4e78; --accent-text: #ffffff; --chip: #eef2f7; --chip-on: #1f4e78; --chip-on-text: #ffffff;
-  --danger: #b42318; --ok: #1a7f37; --warn-bg: #fff4ce; --stage: #e4ebf3;
+  color-scheme: light;
+  --bg: #eef3f9; --surface: #fcfcfb; --text: #0b0b0b; --muted: #52514e; --faint: #898781;
+  --border: #d5dce6; --grid: #e1e0d9; --axis: #c3c2b7;
+  --accent: #184f95; --accent-2: #256abf; --accent-text: #ffffff; --series: #2a78d6;
+  --chip: #e6edf6; --chip-on: #184f95; --chip-on-text: #ffffff;
+  --good: #0ca30c; --good-text: #006300; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
+  --warn-bg: #fff1c9; --crit-bg: #fde7e7; --good-bg: #e2f5e2;
+  --st0: #2a78d6; --st1: #eb6834; --st2: #1baf7a; --st3: #eda100;
+  --st4: #e87ba4; --st5: #008300; --st6: #6250d6; --st7: #e34948;
+  --header-1: #184f95; --header-2: #2a78d6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14181d; --surface: #1d232b; --text: #e8ecf1; --muted: #9aa6b4; --border: #2f3844;
-    --accent: #5aa0e0; --accent-text: #0d1117; --chip: #28313c; --chip-on: #5aa0e0; --chip-on-text: #0d1117;
-    --danger: #ff7b72; --ok: #56d364; --warn-bg: #3a3320; --stage: #232c37;
+    color-scheme: dark;
+    --bg: #0f141b; --surface: #1a1a19; --text: #f0efec; --muted: #c3c2b7; --faint: #898781;
+    --border: #2f3844; --grid: #2c2c2a; --axis: #383835;
+    --accent: #5aa0e0; --accent-2: #3987e5; --accent-text: #0d1117; --series: #3987e5;
+    --chip: #262d36; --chip-on: #5aa0e0; --chip-on-text: #0d1117;
+    --good-text: #0ca30c; --warn-bg: #3a3320; --crit-bg: #3d2224; --good-bg: #1d3320;
+    --st0: #3987e5; --st1: #d95926; --st2: #199e70; --st3: #c98500;
+    --st4: #d55181; --st5: #008300; --st6: #9085e9; --st7: #e66767;
+    --header-1: #0d366b; --header-2: #184f95;
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-header h1 { font-size: 18px; margin: 0; flex: 1 1 auto; }
-header .meta { color: var(--muted); font-size: 12px; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+/* ---------- en-tête + onglets ---------- */
+header { background: linear-gradient(100deg, var(--header-1), var(--header-2)); color: #fff; padding: 12px 20px 0; }
+.head-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+header h1 { font-size: 19px; margin: 0; flex: 1 1 auto; font-weight: 700; }
+header .meta { opacity: .8; font-size: 12px; font-weight: 400; }
+header button { background: rgba(255,255,255,.14); color: #fff; border-color: rgba(255,255,255,.3); }
+header button:hover:not(:disabled) { background: rgba(255,255,255,.26); border-color: #fff; }
+header button.primary { background: #fff; color: var(--header-1); border-color: #fff; font-weight: 600; }
+#save-state { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: rgba(255,255,255,.18); }
+#save-state.err { background: var(--crit); color: #fff; font-weight: 600; }
+.tabs { display: flex; gap: 4px; margin-top: 12px; }
+.tab { border: none; border-radius: 8px 8px 0 0; padding: 9px 20px; font-weight: 600; background: transparent; color: rgba(255,255,255,.8); }
+.tab:hover { background: rgba(255,255,255,.14) !important; }
+.tab[aria-selected=true] { background: var(--bg) !important; color: var(--accent); }
 main { padding: 16px 20px 60px; max-width: 1400px; margin: 0 auto; }
+
 button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 6px; padding: 5px 10px; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
-button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 button.link { border: none; background: none; color: var(--accent); padding: 0 4px; text-decoration: underline; }
 button.link:disabled { text-decoration: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-#save-state { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--chip); }
-#save-state.ok { color: var(--ok); } #save-state.err { color: var(--danger); font-weight: 600; }
+input[type=text], input[type=search], input[type=date], textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+textarea { width: 100%; resize: vertical; min-height: 60px; }
+input[type=checkbox] { accent-color: var(--good); }
 
-.filters { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
-.filters-top { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 10px; }
+/* ---------- filtres ---------- */
+.filters { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--accent-2); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+.filters-top { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-bottom: 6px; }
 .filters-top input[type=search] { flex: 1 1 260px; min-width: 200px; }
+.filters-top strong { color: var(--accent); }
 .fgroup { margin-top: 10px; }
 .fgroup-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-weight: 600; }
 .fgroup-head .count { color: var(--muted); font-weight: 400; font-size: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { border-radius: 14px; padding: 3px 11px; background: var(--chip); border: 1px solid transparent; }
-.chip .n { opacity: .65; margin-left: 4px; font-size: 12px; }
+.chip { border-radius: 14px; padding: 3px 11px; background: var(--chip); border: 1px solid transparent; display: inline-flex; align-items: center; gap: 6px; }
+.chip .n { opacity: .65; font-size: 12px; }
+.chip[data-c]::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px var(--surface); }
 .chip[aria-pressed=true] { background: var(--chip-on); color: var(--chip-on-text); }
-input[type=text], input[type=search], input[type=date], textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
-textarea { width: 100%; resize: vertical; min-height: 60px; }
 
-.stage { margin: 22px 0 8px; padding: 6px 12px; background: var(--stage); border-left: 4px solid var(--accent); border-radius: 4px; font-weight: 700; display: flex; gap: 8px; }
+/* ---------- onglet réunion ---------- */
+.stage { margin: 22px 0 8px; padding: 7px 12px; background: color-mix(in srgb, var(--c) 16%, var(--surface)); border-left: 6px solid var(--c); border-radius: 4px; font-weight: 700; display: flex; gap: 8px; }
 .stage .count { font-weight: 400; color: var(--muted); }
-details.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
-details.card[open] { border-color: var(--accent); }
+details.card { background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--c); border-radius: 8px; margin-bottom: 8px; }
+details.card[open] { box-shadow: 0 2px 10px rgba(0,0,0,.10); }
+details.card.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0% { background: var(--warn-bg); } 100% { background: var(--surface); } }
 summary { padding: 8px 12px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; list-style: none; }
 summary::-webkit-details-marker { display: none; }
 summary::before { content: "▸"; color: var(--muted); }
 details[open] > summary::before { content: "▾"; }
-.num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.num { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
 .title { font-weight: 600; flex: 1 1 280px; }
 .sub { color: var(--muted); font-size: 12px; }
-.badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--chip); }
+.badge { font-size: 12px; padding: 1px 9px; border-radius: 10px; background: var(--chip); }
 .badge.open { background: var(--warn-bg); }
-.tag { font-size: 11px; padding: 0 6px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
+.badge.late { background: var(--crit-bg); color: var(--crit); font-weight: 600; }
+.badge.allgood { background: var(--good-bg); color: var(--good-text); }
+.tag { font-size: 11px; padding: 0 7px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
 .body { padding: 4px 12px 12px; border-top: 1px solid var(--border); display: grid; gap: 12px; grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.6fr); }
 @media (max-width: 900px) { .body { grid-template-columns: 1fr; } }
-.body h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 10px 0 4px; }
+.body h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); margin: 10px 0 4px; }
 .action { display: grid; grid-template-columns: auto 1fr 150px 140px auto; gap: 6px; align-items: center; margin-bottom: 5px; }
 @media (max-width: 1100px) { .action { grid-template-columns: auto 1fr auto; } .action .owner, .action .due { grid-column: 2 / 3; } }
 .action input[type=checkbox] { width: 18px; height: 18px; }
-.action.done .atext { text-decoration: line-through; color: var(--muted); }
-.due.overdue { border-color: var(--danger); color: var(--danger); }
+.action.done .atext { text-decoration: line-through; color: var(--faint); }
+.action.done { opacity: .8; }
+.due.overdue { border-color: var(--crit); color: var(--crit); background: var(--crit-bg); }
 .x { padding: 2px 8px; color: var(--muted); }
-.review { margin-top: 10px; font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.review { margin-top: 10px; font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .empty { text-align: center; color: var(--muted); padding: 40px 0; }
 .banner { background: var(--warn-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: none; }
+
+/* ---------- onglet statistiques ---------- */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--c, var(--series)); border-radius: 8px; padding: 10px 14px; }
+.tile .lab { color: var(--muted); font-size: 12px; }
+.tile .val { font-size: 30px; font-weight: 700; line-height: 1.15; }
+.tile .note { color: var(--muted); font-size: 12px; }
+.tile.crit { --c: var(--crit); background: var(--crit-bg); }
+.tile.good { --c: var(--good); background: var(--good-bg); }
+.tile.crit .val { color: var(--crit); } .tile.good .val { color: var(--good-text); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+@media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.panel.wide { grid-column: 1 / -1; }
+.panel h2 { font-size: 14px; margin: 0; }
+.panel .desc { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.hbar { display: grid; grid-template-columns: minmax(90px, 170px) 1fr 44px; gap: 8px; align-items: center; padding: 3px 0; }
+.hbar .lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.hbar .track { display: flex; gap: 2px; height: 16px; }
+.hbar .seg { height: 100%; min-width: 0; border-radius: 0 4px 4px 0; background: var(--c, var(--series)); }
+.hbar .seg:not(:last-child) { border-radius: 0; }
+.hbar .val { font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; }
+.hbar:hover .seg { filter: brightness(1.12); }
+.cols { display: flex; align-items: flex-end; gap: 6px; height: 170px; border-bottom: 1px solid var(--axis); padding-top: 18px; overflow-x: auto; }
+.col { flex: 1 0 28px; max-width: 56px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.col .bar { width: min(100%, 24px); background: var(--c, var(--series)); border-radius: 4px 4px 0 0; min-height: 2px; }
+.col:hover .bar { filter: brightness(1.12); }
+.col .cv { font-size: 11px; color: var(--muted); }
+.collabs { display: flex; gap: 6px; margin-top: 4px; overflow-x: hidden; }
+.collabs span { flex: 1 0 28px; max-width: 56px; text-align: center; font-size: 11px; color: var(--faint); }
+details.tbl { margin-top: 8px; font-size: 12px; }
+details.tbl summary { padding: 0; color: var(--accent); }
+details.tbl summary::before { content: "▸ "; }
+details.tbl table { margin-top: 6px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tr.go { cursor: pointer; } tr.go:hover td { background: var(--chip); }
+.reason { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 9px; margin: 1px 4px 1px 0; background: var(--chip); }
+.reason.crit { background: var(--crit-bg); color: var(--crit); font-weight: 600; }
+.reason.warn { background: var(--warn-bg); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--c); }
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--text); color: var(--bg); padding: 5px 9px; border-radius: 6px; font-size: 12px; max-width: 320px; display: none; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+#tip b { font-weight: 700; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Réunion engineering <span class="meta" id="gen"></span></h1>
-  <span id="save-state" class="ok">✔ Prêt</span>
-  <button id="btn-refresh" title="Relit les projets dans Odoo (vos notes sont conservées)">↻ Rafraîchir depuis Odoo</button>
-  <button id="btn-export" class="primary" title="Exporte les projets actuellement affichés">⬇ Exporter en Excel</button>
-  <button id="btn-quit" title="Arrête le serveur local">Quitter</button>
+  <div class="head-row">
+    <h1>Réunion engineering <span class="meta" id="gen"></span></h1>
+    <span id="save-state">✔ Prêt</span>
+    <button id="btn-refresh" title="Relit les projets dans Odoo (vos notes sont conservées)">↻ Rafraîchir depuis Odoo</button>
+    <button id="btn-export" class="primary" title="Exporte les projets actuellement affichés">⬇ Exporter en Excel</button>
+    <button id="btn-quit" title="Arrête le serveur local">Quitter</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-meeting" aria-selected="true">📋 Réunion</button>
+    <button class="tab" role="tab" id="tab-stats" aria-selected="false">📊 Statistiques</button>
+  </div>
 </header>
 <main>
   <div class="banner" id="banner"></div>
@@ -89,15 +175,19 @@ details[open] > summary::before { content: "▾"; }
       <input type="search" id="q" placeholder="Rechercher (n° projet, nom, client)…" aria-label="Recherche">
       <label><input type="checkbox" id="open-only"> Seulement les projets avec des actions ouvertes</label>
       <button id="btn-clear">✕ Effacer tous les filtres</button>
-      <button id="btn-expand">Tout déplier</button>
-      <button id="btn-collapse">Tout replier</button>
+      <span id="meeting-only">
+        <button id="btn-expand">Tout déplier</button>
+        <button id="btn-collapse">Tout replier</button>
+      </span>
       <strong id="count"></strong>
     </div>
     <div id="filter-groups"></div>
   </section>
-  <div id="list"></div>
+  <div id="view-meeting"><div id="list"></div></div>
+  <div id="view-stats" hidden></div>
 </main>
 <datalist id="owners"></datalist>
+<div id="tip" role="tooltip"></div>
 
 <script>
 "use strict";
@@ -111,13 +201,18 @@ const GROUPS = [
 const F = { stages: new Set(), managers: new Set(), tags: new Set(), owners: new Set(), openOnly: false, q: "" };
 const openIds = new Set();
 const timers = {};
-let S = { projects: [], notes: {} };
+let S = { projects: [], notes: {}, stage_rank: {} };
+let tab = location.hash === "#stats" ? "stats" : "meeting";
 
 const $ = id => document.getElementById(id);
 const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const uid = () => Math.random().toString(36).slice(2, 10);
-const today = () => new Date().toISOString().slice(0, 10);
+const pad = n => String(n).padStart(2, "0");
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const frDate = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
+const DAY = 86400000;
+const ms = iso => iso ? Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) : null;
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 
 function h(tag, props = {}, ...kids) {
   const el = document.createElement(tag);
@@ -128,6 +223,12 @@ function h(tag, props = {}, ...kids) {
   }
   for (const kid of kids.flat()) if (kid != null) el.append(kid);
   return el;
+}
+
+/* couleur d'une étape : même étape (ou synonyme) = même couleur partout */
+function stageColor(stage) {
+  const r = S.stage_rank[stage];
+  return r != null && r < 8 ? `var(--st${r})` : "var(--faint)";
 }
 
 async function api(path, opts = {}) {
@@ -148,6 +249,10 @@ function actionOwners(p) {
 function openCount(p) {
   const n = S.notes[p.id];
   return n ? n.actions.filter(a => !a.done).length : 0;
+}
+function lateCount(p) {
+  const n = S.notes[p.id], t = today();
+  return n ? n.actions.filter(a => !a.done && a.due && a.due < t).length : 0;
 }
 
 /* ---------- sauvegarde automatique ---------- */
@@ -191,13 +296,14 @@ function renderFilters() {
     const sel = F[g.key];
     const chips = groupValues(g).map(([v, n]) => h("button", {
       class: "chip", type: "button", "aria-pressed": String(sel.has(v)),
-      onclick: () => { sel.has(v) ? sel.delete(v) : sel.add(v); renderFilters(); renderList(); }
+      "data-c": g.key === "stages" ? "1" : null, style: g.key === "stages" ? `--c:${stageColor(v)}` : null,
+      onclick: () => { sel.has(v) ? sel.delete(v) : sel.add(v); refresh(); }
     }, v, h("span", { class: "n" }, String(n))));
     return h("div", { class: "fgroup" },
       h("div", { class: "fgroup-head" }, g.title,
         h("span", { class: "count" }, sel.size ? `${sel.size} sélectionné(s)` : "tous"),
         h("button", { class: "link", type: "button", disabled: !sel.size,
-          onclick: () => { sel.clear(); renderFilters(); renderList(); } }, "Tout afficher")),
+          onclick: () => { sel.clear(); refresh(); } }, "Tout afficher")),
       h("div", { class: "chips" }, chips.length ? chips : h("span", { class: "sub" }, "—")));
   }));
   const anyFilter = GROUPS.some(g => F[g.key].size) || F.openOnly || F.q;
@@ -207,23 +313,24 @@ function clearAll() {
   GROUPS.forEach(g => F[g.key].clear());
   F.openOnly = false; F.q = "";
   $("open-only").checked = false; $("q").value = "";
-  renderFilters(); renderList();
+  refresh();
 }
 
-/* ---------- liste ---------- */
+/* ---------- onglet Réunion ---------- */
 function updateOwnersList() {
   const names = new Set();
   S.projects.forEach(p => { if (p.manager) names.add(p.manager); actionOwners(p).forEach(o => names.add(o)); });
   $("owners").replaceChildren(...[...names].sort((a, b) => norm(a).localeCompare(norm(b))).map(n => h("option", { value: n })));
 }
 function badgeText(p) {
-  const n = note(p.id), open = openCount(p), total = n.actions.length;
-  return total ? `${open} action(s) ouverte(s) / ${total}` : "aucune action";
+  const n = note(p.id), open = openCount(p), total = n.actions.length, late = lateCount(p);
+  if (!total) return "aucune action";
+  return late ? `${open} ouverte(s) dont ${late} en retard` : open ? `${open} action(s) ouverte(s) / ${total}` : `✔ ${total} action(s) faites`;
 }
 function refreshBadge(card, p) {
-  const b = card.querySelector(".badge");
+  const b = card.querySelector(".badge"), open = openCount(p), late = lateCount(p), total = note(p.id).actions.length;
   b.textContent = badgeText(p);
-  b.classList.toggle("open", openCount(p) > 0);
+  b.className = "badge" + (late ? " late" : open ? " open" : total ? " allgood" : "");
   const subj = card.querySelector(".snippet");
   const s = note(p.id).sujets.trim().split("\n")[0];
   subj.textContent = s ? "💬 " + (s.length > 70 ? s.slice(0, 70) + "…" : s) : "";
@@ -233,7 +340,7 @@ function actionRow(p, a, card) {
   const n = note(p.id);
   const row = h("div", { class: "action" + (a.done ? " done" : "") });
   const chk = h("input", { type: "checkbox", "aria-label": "Action faite", checked: a.done,
-    onchange: e => { a.done = e.target.checked; row.classList.toggle("done", a.done); refreshBadge(card, p); queueSave(p.id); renderFilters(); } });
+    onchange: e => { a.done = e.target.checked; row.classList.toggle("done", a.done); markOverdue(due, a); refreshBadge(card, p); queueSave(p.id); renderFilters(); } });
   const text = h("input", { type: "text", class: "atext", placeholder: "Action à entreprendre…", value: a.text,
     oninput: e => { a.text = e.target.value; queueSave(p.id); },
     onkeydown: e => { if (e.key === "Enter") { e.preventDefault(); addAction(p, card, true); } } });
@@ -241,7 +348,7 @@ function actionRow(p, a, card) {
     oninput: e => { a.owner = e.target.value; queueSave(p.id); },
     onchange: () => { updateOwnersList(); renderFilters(); } });
   const due = h("input", { type: "date", class: "due", value: a.due, "aria-label": "Échéance",
-    onchange: e => { a.due = e.target.value; markOverdue(due, a); queueSave(p.id); } });
+    onchange: e => { a.due = e.target.value; markOverdue(due, a); refreshBadge(card, p); queueSave(p.id); } });
   markOverdue(due, a);
   const del = h("button", { class: "x", type: "button", title: "Supprimer l'action", "aria-label": "Supprimer l'action",
     onclick: () => { n.actions = n.actions.filter(x => x !== a); row.remove(); refreshBadge(card, p); queueSave(p.id); renderFilters(); } }, "✕");
@@ -261,7 +368,7 @@ function addAction(p, card, focus) {
 
 function card(p) {
   const n = note(p.id);
-  const det = h("details", { class: "card", "data-id": p.id });
+  const det = h("details", { class: "card", "data-id": p.id, style: `--c:${stageColor(p.stage)}` });
   if (openIds.has(p.id)) det.open = true;
   det.addEventListener("toggle", () => det.open ? openIds.add(p.id) : openIds.delete(p.id));
 
@@ -297,7 +404,6 @@ function visibleProjects() { return S.projects.filter(matches); }
 
 function renderList() {
   const shown = visibleProjects();
-  $("count").textContent = `${shown.length} projet(s) affiché(s) sur ${S.projects.length}`;
   const root = $("list");
   if (!shown.length) { root.replaceChildren(h("div", { class: "empty" }, "Aucun projet ne correspond aux filtres.")); return; }
   const parts = [];
@@ -306,7 +412,7 @@ function renderList() {
     if (p.stage !== stage) {
       stage = p.stage; n = 0;
       countEl = h("span", { class: "count" }, "");
-      parts.push(h("div", { class: "stage" }, stage, countEl));
+      parts.push(h("div", { class: "stage", style: `--c:${stageColor(stage)}` }, stage, countEl));
     }
     n++; countEl.textContent = `(${n})`;
     parts.push(card(p));
@@ -314,17 +420,272 @@ function renderList() {
   root.replaceChildren(...parts);
 }
 
+/* ================================================================
+   ONGLET STATISTIQUES
+   ================================================================ */
+const NONE_OWNER = "(sans responsable)";
+
+function computeStats(projects) {
+  const t = ms(today());
+  const st = {
+    n: projects.length, actions: { total: 0, done: 0, open: 0, late: 0 },
+    owners: new Map(), noOpen: 0, endLate: 0, noEnd: 0,
+    review: [0, 0, 0, 0], age: [0, 0, 0, 0], ageUnknown: 0,
+    stages: new Map(), managers: new Map(), clients: new Map(), months: new Map(), watch: [],
+  };
+  const inc = (m, k, by = 1) => m.set(k, (m.get(k) || 0) + by);
+  for (const p of projects) {
+    const n = S.notes[p.id] || { actions: [], derniere_review: "" };
+    inc(st.stages, p.stage); inc(st.managers, p.manager || "(non assigné)"); inc(st.clients, p.client || "(sans client)");
+
+    let open = 0, late = 0;
+    for (const a of n.actions) {
+      st.actions.total++;
+      const o = a.owner.trim() || NONE_OWNER;
+      if (!st.owners.has(o)) st.owners.set(o, { done: 0, open: 0, late: 0 });
+      const rec = st.owners.get(o);
+      if (a.done) { st.actions.done++; rec.done++; }
+      else if (a.due && a.due < today()) { st.actions.late++; rec.late++; late++; }
+      else { st.actions.open++; rec.open++; }
+      if (!a.done) open++;
+    }
+    if (!open) st.noOpen++;
+
+    const end = ms(p.date_end);
+    let endLateDays = 0;
+    if (end == null) st.noEnd++;
+    else {
+      if (end < t) { st.endLate++; endLateDays = Math.round((t - end) / DAY); }
+      inc(st.months, p.date_end.slice(0, 7));
+    }
+
+    let rvDays = null, b;
+    if (n.derniere_review) { rvDays = Math.round((t - ms(n.derniere_review)) / DAY); b = rvDays <= 7 ? 0 : rvDays <= 30 ? 1 : 2; } else b = 3;
+    st.review[b]++;
+
+    const start = ms(p.date_start);
+    if (start == null) st.ageUnknown++;
+    else { const d = (t - start) / DAY; st.age[d < 90 ? 0 : d < 180 ? 1 : d < 365 ? 2 : 3]++; }
+
+    const reasons = []; let score = 0;
+    if (endLateDays) { reasons.push({ t: `Fin dépassée de ${endLateDays} j`, c: "crit" }); score += 3; }
+    if (late) { reasons.push({ t: `${plural(late, "action en retard", "actions en retard")}`, c: "crit" }); score += 3; }
+    if (b >= 2) { reasons.push({ t: b === 3 ? "Jamais revu" : `Revu il y a ${rvDays} j`, c: "warn" }); score += 1; }
+    if (!open) { reasons.push({ t: "Aucune action ouverte", c: "" }); score += 1; }
+    if (score >= 3) st.watch.push({ p, reasons, score, endLateDays, late });
+  }
+  st.watch.sort((a, b) => b.score - a.score || b.endLateDays - a.endLateDays || b.late - a.late);
+  return st;
+}
+
+/* --- petits composants graphiques (HTML pur, sans bibliothèque) --- */
+function tipOf(el, html) { el.dataset.tip = html; el.tabIndex = 0; return el; }
+
+function hbarRow(label, segs, total, max, valueText, tip, labelColor) {
+  const row = h("div", { class: "hbar" });
+  const lab = h("div", { class: "lab", title: label });
+  if (labelColor) lab.append(h("span", { class: "dot", style: `--c:${labelColor}` }));
+  lab.append(label);
+  const track = h("div", { class: "track" });
+  for (const s of segs) if (s.v > 0) track.append(h("div", { class: "seg", style: `width:${(s.v / max * 100).toFixed(2)}%;--c:${s.c}` }));
+  row.append(lab, track, h("div", { class: "val" }, valueText));
+  return tipOf(row, tip);
+}
+
+function legend(items) {
+  return h("div", { class: "legend" }, items.map(i => h("span", {}, h("i", { style: `background:${i.c}` }), i.t)));
+}
+
+function tableOf(headers, rows) {
+  const t = h("table", {}, h("thead", {}, h("tr", {}, headers.map((x, i) => h("th", { class: i ? "n" : "" }, x)))),
+    h("tbody", {}, rows.map(r => h("tr", {}, r.map((c, i) => h("td", { class: i ? "n" : "" }, String(c)))))));
+  return h("details", { class: "tbl" }, h("summary", {}, "Voir les valeurs (tableau)"), t);
+}
+
+function panel(title, desc, ...body) {
+  return h("section", { class: "panel" }, h("h2", {}, title), h("p", { class: "desc" }, desc), ...body);
+}
+
+function tile(label, value, note, kind) {
+  return h("div", { class: "tile" + (kind ? " " + kind : "") },
+    h("div", { class: "lab" }, label), h("div", { class: "val" }, String(value)), h("div", { class: "note" }, note || " "));
+}
+
+const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+
+function simpleBars(entries, color, unit, colorFn) {
+  const max = Math.max(1, ...entries.map(e => e[1])), total = entries.reduce((s, e) => s + e[1], 0);
+  return entries.map(([label, v]) => hbarRow(label, [{ v, c: colorFn ? colorFn(label) : color }], v, max, String(v),
+    `<b>${label}</b> : ${plural(v, unit[0], unit[1])} (${pct(v, total)} %)`, colorFn ? colorFn(label) : null));
+}
+
+function renderStats() {
+  const root = $("view-stats");
+  const projects = visibleProjects();
+  if (!projects.length) { root.replaceChildren(h("div", { class: "empty" }, "Aucun projet ne correspond aux filtres.")); return; }
+  const st = computeStats(projects), A = st.actions, t = today();
+  const sorted = m => [...m.entries()].sort((a, b) => b[1] - a[1] || norm(a[0]).localeCompare(norm(b[0])));
+
+  /* KPI */
+  const reviewLate = st.review[2] + st.review[3];
+  const kpis = h("div", { class: "kpis" },
+    tile("Projets suivis", st.n, `${st.managers.size - (st.managers.has("(non assigné)") ? 1 : 0)} chef(s) de projet`),
+    tile("Actions ouvertes", A.open + A.late, `${A.late} en retard · ${A.open} dans les temps`),
+    tile(A.late ? "⚠ Actions en retard" : "✔ Actions en retard", A.late, A.late ? "échéance dépassée" : "aucune", A.late ? "crit" : "good"),
+    tile("Actions terminées", A.total ? pct(A.done, A.total) + " %" : "—", `${A.done} sur ${A.total}`, A.total && A.done === A.total ? "good" : ""),
+    tile(st.endLate ? "⚠ Projets en retard" : "✔ Projets en retard", st.endLate, `date de fin dépassée${st.noEnd ? ` · ${st.noEnd} sans date de fin` : ""}`, st.endLate ? "crit" : "good"),
+    tile("Sans action ouverte", st.noOpen, `${pct(st.noOpen, st.n)} % des projets`),
+    tile("Reviews à faire", reviewLate, "jamais revus ou > 30 jours", reviewLate ? "" : "good"));
+
+  /* Projets par étape (couleur = étape, comme dans la liste) */
+  const stageEntries = [...st.stages.entries()];  // déjà dans l'ordre des étapes
+  const byStage = panel("Projets par étape", "Un projet = une barre ; la couleur est celle de l'étape dans la liste.",
+    ...simpleBars(stageEntries, null, ["projet", "projets"], stageColor),
+    tableOf(["Étape", "Projets"], stageEntries));
+
+  /* Projets par chef de projet */
+  const mgrEntries = sorted(st.managers);
+  const byMgr = panel("Projets par chef de projet", "Charge de travail en nombre de projets.",
+    ...simpleBars(mgrEntries, "var(--series)", ["projet", "projets"]),
+    tableOf(["Chef de projet", "Projets"], mgrEntries));
+
+  /* Actions par responsable : faites / ouvertes / en retard */
+  const ownerEntries = [...st.owners.entries()].sort((a, b) => (b[1].open + b[1].late) - (a[1].open + a[1].late) || norm(a[0]).localeCompare(norm(b[0])));
+  const maxOwner = Math.max(1, ...ownerEntries.map(([, r]) => r.done + r.open + r.late));
+  const byOwner = panel("Actions par responsable", "Qui porte quoi : terminées, ouvertes (dans les temps) et en retard.",
+    ownerEntries.length ? legend([{ c: "var(--good)", t: "✔ Terminées" }, { c: "var(--series)", t: "○ Ouvertes" }, { c: "var(--crit)", t: "⚠ En retard" }]) : null,
+    ...(ownerEntries.length ? ownerEntries.map(([o, r]) => hbarRow(o,
+        [{ v: r.done, c: "var(--good)" }, { v: r.open, c: "var(--series)" }, { v: r.late, c: "var(--crit)" }], 0, maxOwner,
+        String(r.done + r.open + r.late),
+        `<b>${o}</b> : ${r.done} terminée(s) · ${r.open} ouverte(s) · ${r.late} en retard`)) :
+      [h("div", { class: "empty" }, "Aucune action saisie pour l'instant.")]),
+    ownerEntries.length ? tableOf(["Responsable", "Terminées", "Ouvertes", "En retard"], ownerEntries.map(([o, r]) => [o, r.done, r.open, r.late])) : null);
+
+  /* Échéances par mois */
+  let monthPanel;
+  if (st.months.size) {
+    const keys = [...st.months.keys()].sort();
+    const all = []; let [y, m] = keys[0].split("-").map(Number); const [y2, m2] = keys[keys.length - 1].split("-").map(Number);
+    while ((y < y2 || (y === y2 && m <= m2)) && all.length < 48) { all.push(`${y}-${pad(m)}`); if (++m > 12) { m = 1; y++; } }
+    const maxM = Math.max(...all.map(k => st.months.get(k) || 0)), cur = t.slice(0, 7);
+    const cols = h("div", { class: "cols" }), labs = h("div", { class: "collabs" });
+    for (const k of all) {
+      const v = st.months.get(k) || 0, late = k < cur;
+      const col = h("div", { class: "col" },
+        all.length <= 14 && v ? h("span", { class: "cv" }, String(v)) : null,
+        h("div", { class: "bar", style: `height:${(v / maxM * 100).toFixed(1)}%;min-height:${v ? 2 : 0}px;--c:${late ? "var(--crit)" : "var(--series)"}` }));
+      cols.append(tipOf(col, `<b>${k.slice(5)}/${k.slice(0, 4)}</b> : ${plural(v, "fin de projet", "fins de projet")}${late && v ? " (échéance dépassée)" : ""}`));
+      labs.append(h("span", {}, `${k.slice(5)}/${k.slice(2, 4)}`));
+    }
+    monthPanel = panel("Échéances (date de fin) par mois", `Projets en cours selon leur date de fin${st.noEnd ? ` — ${st.noEnd} sans date de fin non comptés` : ""}.`,
+      legend([{ c: "var(--crit)", t: "⚠ Échéance dépassée" }, { c: "var(--series)", t: "À venir" }]), cols, labs,
+      tableOf(["Mois", "Projets"], all.map(k => [`${k.slice(5)}/${k.slice(0, 4)}`, st.months.get(k) || 0])));
+    monthPanel.classList.add("wide");
+  }
+
+  /* Fraîcheur des reviews (état : bon -> critique) */
+  const rvLabels = ["Revu ≤ 7 jours", "Revu 8 à 30 jours", "Revu > 30 jours", "Jamais revu"];
+  const rvColors = ["var(--good)", "var(--warn)", "var(--serious)", "var(--crit)"];
+  const rvEntries = rvLabels.map((l, i) => [l, st.review[i]]);
+  const maxRv = Math.max(1, ...st.review);
+  const reviews = panel("Fraîcheur des reviews", "Depuis quand chaque projet a été passé en revue (bouton « Marquer revu aujourd'hui »).",
+    ...rvEntries.map(([l, v], i) => hbarRow(l, [{ v, c: rvColors[i] }], v, maxRv, String(v), `<b>${l}</b> : ${plural(v, "projet", "projets")} (${pct(v, st.n)} %)`)),
+    tableOf(["Fraîcheur", "Projets"], rvEntries));
+
+  /* Ancienneté */
+  const ageLabels = ["< 3 mois", "3 à 6 mois", "6 à 12 mois", "> 12 mois"];
+  const ageEntries = ageLabels.map((l, i) => [l, st.age[i]]);
+  const age = panel("Ancienneté des projets", `Temps écoulé depuis la date de début${st.ageUnknown ? ` — ${st.ageUnknown} sans date de début non comptés` : ""}.`,
+    ...simpleBars(ageEntries, "var(--series)", ["projet", "projets"]),
+    tableOf(["Ancienneté", "Projets"], ageEntries));
+
+  /* Clients */
+  const cl = sorted(st.clients), top = cl.slice(0, 8);
+  if (cl.length > 8) top.push([`Autres (${cl.length - 8})`, cl.slice(8).reduce((s, e) => s + e[1], 0)]);
+  const clients = panel("Projets par client", cl.length > 8 ? "Les 8 premiers clients, le reste regroupé." : "Répartition des projets par client.",
+    ...simpleBars(top, "var(--series)", ["projet", "projets"]),
+    tableOf(["Client", "Projets"], cl));
+
+  /* À surveiller */
+  const watchRows = st.watch.slice(0, 15);
+  const watch = panel("Projets à surveiller", st.watch.length ? `${plural(st.watch.length, "projet à regarder", "projets à regarder")} en priorité${st.watch.length > 15 ? " (15 premiers)" : ""}. Cliquez une ligne pour ouvrir le projet.` : "Rien d'urgent : aucun projet en retard ni action en retard.",
+    st.watch.length ? h("table", {}, h("thead", {}, h("tr", {}, ["Projet", "Étape", "Chef de projet", "Pourquoi"].map(x => h("th", {}, x)))),
+      h("tbody", {}, watchRows.map(w => {
+        const tr = h("tr", { class: "go", tabindex: "0", onclick: () => goTo(w.p.id), onkeydown: e => { if (e.key === "Enter") goTo(w.p.id); } },
+          h("td", {}, h("b", {}, w.p.numero || "—"), " ", w.p.description),
+          h("td", {}, h("span", { class: "dot", style: `--c:${stageColor(w.p.stage)}` }), w.p.stage),
+          h("td", {}, w.p.manager || "—"),
+          h("td", {}, w.reasons.map(r => h("span", { class: "reason " + r.c }, r.t))));
+        return tr;
+      }))) : null);
+  watch.classList.add("wide");
+
+  root.replaceChildren(kpis, h("div", { class: "grid" }, byStage, byMgr, byOwner, reviews, age, clients, monthPanel, watch));
+}
+
+function goTo(id) {
+  openIds.add(id); setTab("meeting");
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`details.card[data-id="${id}"]`);
+    if (el) { el.open = true; el.scrollIntoView({ block: "center" }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1700); }
+  });
+}
+
+/* ---------- infobulle commune (survol + clavier) ---------- */
+const tip = $("tip");
+function showTip(el, x, y) {
+  tip.innerHTML = ""; // contenu construit à partir de textes déjà échappés ci-dessous
+  const tmp = document.createElement("div"); tmp.innerHTML = escapeTip(el.dataset.tip);
+  tip.append(...tmp.childNodes); tip.style.display = "block";
+  const w = tip.offsetWidth, hgt = tip.offsetHeight;
+  tip.style.left = Math.min(x + 14, innerWidth - w - 8) + "px";
+  tip.style.top = (y + 18 + hgt > innerHeight ? y - hgt - 10 : y + 18) + "px";
+}
+/* seules les balises <b> écrites par ce script sont conservées ; tout le reste est neutralisé */
+function escapeTip(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>");
+}
+document.addEventListener("pointermove", e => {
+  const el = e.target.closest && e.target.closest("[data-tip]");
+  if (el) showTip(el, e.clientX, e.clientY); else tip.style.display = "none";
+});
+document.addEventListener("focusin", e => {
+  const el = e.target.closest && e.target.closest("[data-tip]");
+  if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left + 10, r.top); }
+});
+document.addEventListener("focusout", () => { tip.style.display = "none"; });
+
+/* ---------- affichage global ---------- */
+function setTab(name) {
+  tab = name;
+  history.replaceState(null, "", name === "stats" ? "#stats" : "#");
+  for (const k of ["meeting", "stats"]) {
+    $("tab-" + k).setAttribute("aria-selected", String(tab === k));
+    $("view-" + k).hidden = tab !== k;
+  }
+  $("meeting-only").hidden = tab !== "meeting";
+  renderView();
+}
+function renderView() {
+  const shown = visibleProjects().length;
+  $("count").textContent = `${shown} projet(s) affiché(s) sur ${S.projects.length}`;
+  if (tab === "stats") renderStats(); else renderList();
+}
+function refresh() { renderFilters(); renderView(); }
+
 function renderAll() {
   $("gen").textContent = S.generated_at ? "· données Odoo du " + S.generated_at : "";
   const b = $("banner");
   if (S.archived_count) { b.style.display = "block"; b.textContent = `${S.archived_count} projet(s) avec des notes ne sont plus dans la liste (clôturés, étiquette retirée…) : ils sont dans l'onglet « Projets archivés » de l'export Excel.`; }
   else b.style.display = "none";
-  updateOwnersList(); renderFilters(); renderList();
+  updateOwnersList(); renderFilters(); setTab(tab);
 }
 
 /* ---------- boutons ---------- */
-$("q").addEventListener("input", e => { F.q = norm(e.target.value).trim(); renderFilters(); renderList(); });
-$("open-only").addEventListener("change", e => { F.openOnly = e.target.checked; renderFilters(); renderList(); });
+$("tab-meeting").addEventListener("click", () => setTab("meeting"));
+$("tab-stats").addEventListener("click", () => setTab("stats"));
+$("q").addEventListener("input", e => { F.q = norm(e.target.value).trim(); refresh(); });
+$("open-only").addEventListener("change", e => { F.openOnly = e.target.checked; refresh(); });
 $("btn-clear").addEventListener("click", clearAll);
 $("btn-expand").addEventListener("click", () => document.querySelectorAll("details.card").forEach(d => d.open = true));
 $("btn-collapse").addEventListener("click", () => document.querySelectorAll("details.card").forEach(d => d.open = false));

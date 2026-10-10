@@ -7,6 +7,11 @@ Autres / Template / Canceled) et ouvre une page dans le navigateur :
 
 - **Filtres multi-sélection** : étapes, chefs de projet, étiquettes, responsables d'actions
   (clic sur une pastille = ajouter/retirer ; « Tout afficher » = vider un groupe ; « Effacer tous les filtres »).
+- **Onglet « Statistiques »** (suit les filtres) : indicateurs clés (projets, actions ouvertes / en retard / terminées,
+  projets en retard, reviews à faire), projets par étape / chef de projet / client, actions par responsable,
+  fraîcheur des reviews, ancienneté, échéances par mois, et liste des « projets à surveiller » (clic = ouvre le projet).
+- **Couleurs** : chaque étape a sa couleur, identique dans les filtres, la liste et les graphiques ;
+  rouge = en retard, vert = terminé ; mode clair/sombre automatique selon Windows.
 - **Par projet** : sujets à discuter + actions à entreprendre (case à cocher, responsable, échéance).
 - **Sauvegarde automatique** dans `notes_reunion.json` (même dossier que le script), retrouvé à chaque lancement.
   Faites des copies de ce fichier si les notes sont importantes.

@@ -325,6 +325,9 @@ class NotesStore:
                 "projects": self.projects,
                 "notes": {pid: n for pid, n in self.data["notes"].items() if pid in current},
                 "stage_order": STAGE_ORDER,
+                # rang de tri de chaque étape (les synonymes partagent le même rang) :
+                # sert à donner la même couleur à la même étape dans l'interface
+                "stage_rank": {p["stage"]: stage_priority(p["stage"]) for p in self.projects},
                 "generated_at": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "archived_count": len(self.archived_rows()),
             }
